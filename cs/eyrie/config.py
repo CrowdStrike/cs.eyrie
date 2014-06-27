@@ -101,6 +101,8 @@ def setup_logging(config_uri, incremental=False, **kwargs):
                     sval = logging.config._resolve(sval)
                 elif skey == 'args':
                     continue
+                elif skey == 'propagate':
+                    sval = asbool(sval)
                 settings[skey] = sval
             section[sname] = settings
 
