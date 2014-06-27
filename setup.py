@@ -56,5 +56,11 @@ setup(
         'Programming Language :: Python :: 2.7',
     ],
     test_suite='tests',
-    tests_require=test_requirements
+    tests_require=test_requirements,
+    entry_points={
+        'paste.app_factory': 'main = cs.eyrie:main',
+        'console_scripts': [
+            'eyrie_logger = cs.eyrie.scripts.logger:main',
+        ]
+    },
 )

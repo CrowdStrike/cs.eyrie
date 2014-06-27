@@ -10,3 +10,7 @@ from cs.eyrie.config import ZMQChannel
 from cs.eyrie.config import script_main
 from cs.eyrie.vassal import Vassal
 from cs.eyrie.vassal import BatchVassal
+
+
+def main(global_config, **settings):
+    pass
