@@ -17,7 +17,7 @@ history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 requirements = [
     # TODO: put package requirements here
     'cryptography',
-    'dogpile',
+    'dogpile.cache',
     'pyramid',
     'pyzmq',
     'setproctitle',
