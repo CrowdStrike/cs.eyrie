@@ -118,7 +118,7 @@ def setup_logging(config_uri, incremental=False, **kwargs):
     dictConfig(logging_config)
 
     if incremental:
-        logging.info('L)gging re-configured.')
+        logging.info('Logging re-configured.')
     else:
         logging.info('Logging configured.')
 
