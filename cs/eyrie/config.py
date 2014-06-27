@@ -116,12 +116,6 @@ def setup_logging(config_uri, incremental=False, **kwargs):
     logging_config['root'] = root_config
 
     dictConfig(logging_config)
-    # dictConfig forces logging.Filter instead of our subclass
-    if 'filters' in root_config and 'hostname' in root_config['filters']:
-        root = logging.getLogger()
-        root.removeFilter(root.filters[0])
-        cname = logging_config['filters']['hostname']['class']
-        root.addFilter(logging.config._resolve(cname)())
 
     if incremental:
         logging.info('L)gging re-configured.')
