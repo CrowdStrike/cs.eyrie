@@ -5,3 +5,8 @@
 __author__ = 'CrowdStrike, Inc.'
 __email__ = 'csoc@crowdstrike.com'
 __version__ = '0.1.0'
+
+from cs.eyrie.config import ZMQChannel
+from cs.eyrie.config import script_main
+from cs.eyrie.vassal import Vassal
+from cs.eyrie.vassal import BatchVassal
