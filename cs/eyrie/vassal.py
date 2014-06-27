@@ -29,7 +29,6 @@ from zmq.eventloop.zmqstream import ZMQStream
 
 from cs.eyrie.config import SOCKET_TYPES
 from cs.eyrie.config import ZMQChannel
-from cs.eyrie.config import setup_logging
 
 
 class Vassal(object):
@@ -53,7 +52,9 @@ class Vassal(object):
                           self.__class__.__name__])
         self.logger = logging.getLogger(lname)
 
-        self.context = zmq.Context()
+        self.context = kwargs.get('context')
+        if self.context is None:
+            self.context = zmq.Context()
         kwargs['context'] = self.context
         loop = kwargs.pop('loop', None)
         self.set_ioloop(loop)
@@ -61,8 +62,6 @@ class Vassal(object):
         self.config_uri = kwargs.pop('config')
 
         self.init_streams()
-
-        setup_logging(self.config_uri, **kwargs)
 
         app_settings = get_appsettings(self.config_uri, name=self.app_name)
         self.config = Configurator(settings=app_settings)

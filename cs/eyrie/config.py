@@ -112,6 +112,8 @@ def setup_logging(config_uri, incremental=False, **kwargs):
 
     if 'zmq' in root_config['handlers'] and 'context' in kwargs:
         logging_config['handlers']['zmq']['context'] = kwargs['context']
+        logging_config['handlers']['zmq']['loop'] = kwargs['loop']
+        logging_config['handlers']['zmq']['async'] = kwargs.get('async', False)
 
     logging_config['root'] = root_config
 
@@ -169,7 +171,7 @@ def info_signal_handler(signal, frame):
                  ''.join(traceback.format_stack(frame)))
 
 
-def script_main(script_class, cache_region):
+def script_main(script_class, cache_region, loop=None):
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config',
@@ -198,12 +200,18 @@ def script_main(script_class, cache_region):
 
     # Pop off kwargs not relevant to script class
     kwargs = copy(vars(pargs))
+    kwargs['context'] = zmq.Context()
+    kwargs['async'] = True
+    if loop is None:
+        loop = ioloop.IOLoop.instance()
+    kwargs['loop'] = loop
     for a in ['blocking_log_threshold']:
         kwargs.pop(a)
 
     if cache_region is not None:
         configure_caching(cache_region, pargs.config)
 
+    setup_logging(pargs.config, **kwargs)
     vassal = script_class(**kwargs)
 
     def hup_signal_handler(signal, frame):
