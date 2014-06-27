@@ -1,6 +1,8 @@
 # Copyright (C) 2014 CrowdStrike, Inc. and contributors
 # This file is subject to the terms and conditions of the BSD License.
 # See the file LICENSE in the main directory for details
+from __future__ import absolute_import
+
 from cStringIO import StringIO
 from collections import Counter
 from collections import OrderedDict
@@ -14,6 +16,7 @@ import os
 from uuid import UUID
 
 from psycopg2 import DatabaseError
+from psycopg2.extras import register_uuid
 
 from pyramid.config import Configurator
 from pyramid.paster import get_appsettings
@@ -77,7 +80,7 @@ class Vassal(object):
             self.loop = loop
 
     def init_db(self):
-        #register_uuid()
+        register_uuid()
         # TODO: look into using Momoko for async
         #       processing using Tornado's IOLoop
         #       (LISTEN/NOTIFY currently not supported)
