@@ -16,7 +16,15 @@ history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 
 requirements = [
     # TODO: put package requirements here
+    'cryptography',
+    'dogpile',
+    'pyramid',
+    'pyzmq',
+    'setproctitle',
     'setuptools',
+    'sixfeetup.bowab',
+    'tornado',
+    'zope.sqlalchemy',
 ]
 
 test_requirements = [
