@@ -57,6 +57,7 @@ class ZMQHandler(HMACHandler):
             self.context = context
         self.socket = self.context.socket(zmq.PUB)
         self.socket.connect(endpoint)
+        # TODO: support zmq.green (i.e., gevent vs. tornado)
         self.async = async
         if self.async:
             self.stream = ZMQStream(self.socket, io_loop=loop)
