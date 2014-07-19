@@ -249,7 +249,7 @@ def script_main(script_class, cache_region, loop=None):
         for handler in root.handlers:
             if hasattr(handler, 'stream'):
                 handler.stream.flush()
-        vassal.loop.add_callback(vassal.loop.stop)
+        vassal.terminate()
 
     signal.signal(signal.SIGHUP, hup_signal_handler)
     signal.signal(signal.SIGINT, term_signal_handler)
