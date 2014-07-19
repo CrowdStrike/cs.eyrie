@@ -193,14 +193,17 @@ class Vassal(object):
             #self.logger.debug('Sent on %s: %d', cname, buf_len)
             if input_cname and not self.streams[input_cname].receiving():
                 buf_len = stream._send_queue.qsize()
+                hwm = self.channels[input_cname].hwm
                 if buf_len <= self.channels[input_cname].hwm:
                     handler = self.get_recv_handler(input_cname)
                     if handler:
                         txt = "Resuming receive on: %s (Buffered: %d, HWM: %d)"
-                        hwm = self.channels[input_cname].hwm
                         self.logger.info(txt, input_cname, buf_len, hwm)
                         input_stream = self.streams[input_cname]
                         input_stream.on_recv_stream(self.onRecvStream)
+                else:
+                    txt = "Still paused on: %s (Buffered: %d, HWM: %d)"
+                    self.logger.debug(txt, input_cname, buf_len, hwm)
         except Exception as err:
             self.logger.exception(err)
 
