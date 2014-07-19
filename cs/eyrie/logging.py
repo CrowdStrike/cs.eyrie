@@ -51,6 +51,10 @@ class ZMQHandler(logging.Handler):
         if self.async:
             self.stream = ZMQStream(self.socket, io_loop=loop)
 
+    def emit(self, record):
+        serialized_record = self.serialize(record)
+        self.send(logger_name=record.name, serialized_record=serialized_record)
+
     def send(self, **kwargs):
         """Emit a log message on my socket."""
         kwargs.setdefault('hostname', self.hostname)

@@ -4,7 +4,6 @@
 from collections import Counter
 import json
 import logging
-import os
 import pickle
 import time
 
@@ -27,7 +26,6 @@ from cs.eyrie import Vassal
 from cs.eyrie import ZMQChannel
 from cs.eyrie import script_main
 from cs.eyrie.config import DEFAULT_ITERATIONS
-from cs.eyrie.config import DEFAULT_SALT_BITS
 from cs.eyrie.config import LOGGING_PORT
 from cs.eyrie.config import LogMessageHandler
 from cs.eyrie.config import ZMQLogMessage
@@ -97,9 +95,20 @@ class HMACHandler(object):
         return msg.serialized_record
 
 
+# This is a stub to allow plaintext messages
+class ZMQHandler(object):
+
+    def __init__(self, **kwargs):
+        pass
+
+    def handle(self, msg):
+        return msg.serialized_record
+
+
 LogMessageHandler.register(FernetHandler)
 LogMessageHandler.register(GCMHandler)
 LogMessageHandler.register(HMACHandler)
+LogMessageHandler.register(ZMQHandler)
 
 
 class Scribe(Vassal):
@@ -116,7 +125,9 @@ class Scribe(Vassal):
     title = "(eyrie:logger)"
     app_name = 'eyrie_logger'
     report_interval = 10
-    handler_classes = (FernetHandler, GCMHandler, HMACHandler)
+    handler_classes = (
+        FernetHandler, GCMHandler, HMACHandler, ZMQHandler,
+    )
 
     def __init__(self, **kwargs):
         self.stats = Counter()
