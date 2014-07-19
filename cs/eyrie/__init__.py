@@ -6,6 +6,11 @@ __author__ = 'CrowdStrike, Inc.'
 __email__ = 'csoc@crowdstrike.com'
 __version__ = '0.1.0'
 
+import sys
+if '__pypy__' in sys.builtin_module_names:
+    from psycopg2cffi import compat
+    compat.register()
+
 from cs.eyrie.config import ZMQChannel
 from cs.eyrie.config import script_main
 from cs.eyrie.vassal import Vassal
