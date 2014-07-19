@@ -3,6 +3,8 @@
 # See the file LICENSE in the main directory for details
 from __future__ import absolute_import
 
+from abc import ABCMeta
+from abc import abstractmethod
 from ConfigParser import RawConfigParser
 import argparse
 from collections import namedtuple
@@ -60,8 +62,30 @@ ZMQChannel.__new__ = partial(
 
 ZMQLogMessage = namedtuple(
     'ZMQLogMessage',
-    ['logger_name', 'hostname', 'incoming_digest', 'pickled_record']
+    ['logger_name', 'hostname', 'logger_type', 'serialized_record',
+     'version', 'digest', 'iv', 'tag', 'serialization_format']
 )
+
+
+DEFAULT_ITERATIONS = 100000
+DEFAULT_IV_BITS = 96
+DEFAULT_SALT_BITS = 64
+
+
+class LogMessageHandler(object):
+
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
+    def handle(self, msg):
+        return msg
+
+    @classmethod
+    def __subclasshook__(cls, C):
+        if cls is LogMessageHandler:
+            if any("handle" in B.__dict__ for B in C.__mro__):
+                return True
+        return NotImplemented
 
 
 # Unfortunately, RawConfigParser forces all option keys to lower-case
