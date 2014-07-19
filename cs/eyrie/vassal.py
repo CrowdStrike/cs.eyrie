@@ -150,6 +150,7 @@ class Vassal(object):
             stream.on_send_stream(self.onSendStream)
 
     def terminate(self):
+        logging.shutdown()
         self.loop.stop()
 
     def onCommand(self, cmd):
