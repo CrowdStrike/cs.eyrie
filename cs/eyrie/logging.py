@@ -24,7 +24,6 @@ from zmq.eventloop.zmqstream import ZMQStream
 
 from cs.eyrie.config import DEFAULT_ITERATIONS
 from cs.eyrie.config import DEFAULT_IV_BITS
-from cs.eyrie.config import DEFAULT_SALT_BITS
 from cs.eyrie.config import LOGGING_ENDPOINT
 from cs.eyrie.config import ZMQLogMessage
 
@@ -110,7 +109,6 @@ class FernetHandler(ZMQHandler):
 class GCMHandler(ZMQHandler):
 
     iv_bits = DEFAULT_IV_BITS
-    salt_bits = DEFAULT_SALT_BITS
 
     def __init__(self,
                  authkey=None,

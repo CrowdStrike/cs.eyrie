@@ -69,7 +69,6 @@ ZMQLogMessage = namedtuple(
 
 DEFAULT_ITERATIONS = 100000
 DEFAULT_IV_BITS = 96
-DEFAULT_SALT_BITS = 64
 
 
 class LogMessageHandler(object):
