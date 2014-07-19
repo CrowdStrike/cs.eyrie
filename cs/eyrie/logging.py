@@ -30,8 +30,6 @@ from cs.eyrie.config import ZMQLogMessage
 
 
 class ZMQHandler(logging.Handler):
-    """This is the blocking ZMQ publisher
-    """
 
     frame_class = ZMQLogMessage
     version = '1'
