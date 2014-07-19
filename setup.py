@@ -61,6 +61,7 @@ setup(
         'paste.app_factory': 'main = cs.eyrie:main',
         'console_scripts': [
             'eyrie_logger = cs.eyrie.scripts.logger:main',
+            'eyrie_injector = cs.eyrie.scripts.log_injector:main',
         ]
     },
 )
