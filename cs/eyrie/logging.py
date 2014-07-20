@@ -34,7 +34,7 @@ class ZMQHandler(logging.Handler):
     version = '1'
 
     def __init__(self, endpoint=LOGGING_ENDPOINT, context=None,
-                 async=False, loop=None, serialization_format='json'):
+                 async=False, loop=None, serialization_format='pickle'):
         self.hostname = socket.gethostname()
         self.serialization_format = serialization_format
         self.logger_type = self.__class__.__name__
