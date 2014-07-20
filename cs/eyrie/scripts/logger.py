@@ -165,6 +165,8 @@ class Scribe(Vassal):
             return pickle.loads(serialized_record)
         elif serialization_format == 'json':
             rdata = json.loads(serialized_record)
+            if 'args' in rdata:
+                rdata['args'] = tuple(rdata['args'])
             return logging.makeLogRecord(rdata)
         else:
             raise ValueError
