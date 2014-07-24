@@ -150,7 +150,7 @@ class Vassal(object):
         if self.channels[sname].drains is not None:
             stream.on_send_stream(self.onSendStream)
             cb = lambda msg, status: self.onSendStream(stream, msg, status)
-            stream.send_multipart = partial(callback=cb)
+            stream.send_multipart = partial(stream.send_multipart, callback=cb)
 
     def terminate(self):
         logging.shutdown()
