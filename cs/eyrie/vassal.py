@@ -10,6 +10,7 @@ from collections import defaultdict
 from collections import deque
 import csv
 from datetime import timedelta
+from functools import partial
 import logging
 import multiprocessing
 import os
@@ -148,6 +149,8 @@ class Vassal(object):
 
         if self.channels[sname].drains is not None:
             stream.on_send_stream(self.onSendStream)
+            cb = lambda msg, status: self.onSendStream(stream, msg, status)
+            stream.send_multipart = partial(callback=cb)
 
     def terminate(self):
         logging.shutdown()
