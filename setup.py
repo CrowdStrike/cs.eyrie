@@ -25,6 +25,10 @@ requirements = [
     'sixfeetup.bowab',
     'tornado',
     'zope.sqlalchemy',
+    'gevent',
+    'kafka-python',
+    'kazoo',
+    'hash_ring',
 ]
 
 test_requirements = [
@@ -62,6 +66,8 @@ setup(
         'console_scripts': [
             'eyrie_logger = cs.eyrie.scripts.logger:main',
             'eyrie_injector = cs.eyrie.scripts.log_injector:main',
+            'kafka_consumer = cs.eyrie.scripts.kafka_consumer:main',
+            'kafka_router = cs.eyrie.scripts.kafka_router:main',
         ]
     },
 )
