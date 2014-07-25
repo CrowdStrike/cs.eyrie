@@ -34,9 +34,11 @@ class ZMQHandler(logging.Handler):
     version = '1'
 
     def __init__(self, endpoint=LOGGING_ENDPOINT, context=None,
-                 async=False, loop=None, serialization_format='pickle'):
+                 async=False, loop=None, serialization_format='json',
+                 sanitize_log_records=True):
         self.hostname = socket.gethostname()
         self.serialization_format = serialization_format
+        self.sanitize_log_records = sanitize_log_records
         self.logger_type = self.__class__.__name__
         super(ZMQHandler, self).__init__()
         if context is None:
@@ -53,7 +55,6 @@ class ZMQHandler(logging.Handler):
     def emit(self, record):
         serialized_record = self.serialize(record)
         self.send(logger_name=record.name, serialized_record=serialized_record)
-
     def send(self, **kwargs):
         """Emit a log message on my socket."""
         kwargs.setdefault('hostname', self.hostname)
@@ -76,16 +77,39 @@ class ZMQHandler(logging.Handler):
             pass
 
     def serialize(self, record):
-        if self.serialization_format == 'pickle':
-            try:
-                return pickle.dumps(record, pickle.HIGHEST_PROTOCOL)
-            except (pickle.PicklingError,):
-                pass
-        elif self.serialization_format == 'json':
-            try:
-                return json.dumps(vars(record))
-            except ValueError:
-                pass
+        if self.sanitize_log_records:
+            # The following is to prevent any 3rd-party objects
+            # from appearing in the remote side
+            rdata = vars(record)
+            msg = self.formatter.format(record)
+            rdata['args'] = tuple()
+            rdata['msg'] = msg
+            rdata['message'] = msg
+            rdata['exc_info'] = None
+            rdata['exc_text'] = None
+            if self.serialization_format == 'pickle':
+                sanitized_record = logging.makeLogRecord(rdata)
+                try:
+                    return pickle.dumps(sanitized_record,
+                                        pickle.HIGHEST_PROTOCOL)
+                except (pickle.PicklingError,):
+                    pass
+            elif self.serialization_format == 'json':
+                try:
+                    return json.dumps(rdata)
+                except ValueError:
+                    pass
+        else:
+            if self.serialization_format == 'pickle':
+                try:
+                    return pickle.dumps(record, pickle.HIGHEST_PROTOCOL)
+                except (pickle.PicklingError,):
+                    pass
+            elif self.serialization_format == 'json':
+                try:
+                    return json.dumps(vars(record))
+                except ValueError:
+                    pass
 
 
 class FernetHandler(ZMQHandler):
