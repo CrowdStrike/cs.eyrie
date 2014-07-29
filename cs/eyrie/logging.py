@@ -55,6 +55,7 @@ class ZMQHandler(logging.Handler):
     def emit(self, record):
         serialized_record = self.serialize(record)
         self.send(logger_name=record.name, serialized_record=serialized_record)
+
     def send(self, **kwargs):
         """Emit a log message on my socket."""
         kwargs.setdefault('hostname', self.hostname)
@@ -81,7 +82,7 @@ class ZMQHandler(logging.Handler):
             # The following is to prevent any 3rd-party objects
             # from appearing in the remote side
             rdata = vars(record)
-            msg = self.formatter.format(record)
+            msg = self.format(record)
             rdata['args'] = tuple()
             rdata['msg'] = msg
             rdata['message'] = msg
