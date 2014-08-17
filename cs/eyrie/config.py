@@ -149,6 +149,11 @@ def setup_logging(config_uri, incremental=False, **kwargs):
 
 
 def configure_caching(cache_region, config_uri):
+    try:
+        from dogpile import cache
+    except ImportError:
+        raise RuntimeError("Dogpile support requires cs.eyrie to be installed with the Dogpile extra: install_requires= ['cs.eyrie[Dogpile]']")
+
     cp = RawConfigParser()
     cp.read([config_uri])
     if cp.has_section('dogpile'):

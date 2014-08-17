@@ -10,19 +10,32 @@ import os
 import socket
 import time
 
-from hash_ring import HashRing
+try:
+    from hash_ring import HashRing
 
-from kafka.client import KafkaClient
-from kafka.consumer import SimpleConsumer
+    from kafka.client import KafkaClient
+    from kafka.consumer import SimpleConsumer
 
-from kazoo.client import KazooClient
-from kazoo.exceptions import KazooException
-from kazoo.exceptions import NodeExistsError
-from kazoo.protocol.states import KazooState
-from kazoo.retry import KazooRetry
-from kazoo.retry import RetryFailedError
-from kazoo.recipe.watchers import PatientChildrenWatch
-from kazoo.recipe.partitioner import PartitionState
+    from kazoo.client import KazooClient
+    from kazoo.exceptions import KazooException
+    from kazoo.exceptions import NodeExistsError
+    from kazoo.protocol.states import KazooState
+    from kazoo.retry import KazooRetry
+    from kazoo.retry import RetryFailedError
+    from kazoo.recipe.watchers import PatientChildrenWatch
+    from kazoo.recipe.partitioner import PartitionState
+except ImportError:
+    HashRing = None
+    KafkaClient = None
+    SimpleConsumer = None
+    KazooClient = None
+    KazooException = None
+    NodeExistsError = None
+    KazooState = None
+    KazooRetry = None
+    RetryFailedError = None
+    PatientChildrenWatch = None
+    PartitionState = None
 
 
 # https://cwiki.apache.org/confluence/display/KAFKA/Kafka+data+structures+in+Zookeeper
@@ -114,6 +127,8 @@ class ZKPartitioner(object):
         if logger is None:
             logger = logging.getLogger('kafka.consumer.zkpartitioner')
         self.logger = logger
+        if PartitionState is None:
+            raise RuntimeError("ZooKeeper support requires cs.eyrie to be installed with the Kafka extra: install_requires= ['cs.eyrie[Kafka]']")
         self.state = PartitionState.ALLOCATING
         self.group = group
         self.topic = topic
@@ -420,6 +435,8 @@ class ZKConsumer(object):
             logger = logging.getLogger('kafka.consumer.ZKConsumer')
         self.logger = logger
 
+        if KafkaClient is None:
+            raise RuntimeError("Kafka support requires cs.eyrie to be installed with the Kafka extra: install_requires= ['cs.eyrie[Kafka]']")
         self.zk_handler = zk_handler
         self.zk_hosts = zk_hosts
 

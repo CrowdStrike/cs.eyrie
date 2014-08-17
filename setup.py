@@ -17,18 +17,11 @@ history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 requirements = [
     # TODO: put package requirements here
     'cryptography',
-    'dogpile.cache',
     'pyramid',
     'pyzmq',
     'setproctitle',
     'setuptools',
-    'sixfeetup.bowab',
     'tornado',
-    'zope.sqlalchemy',
-    'gevent',
-    'kafka-python',
-    'kazoo',
-    'hash_ring',
 ]
 
 test_requirements = [
@@ -47,6 +40,11 @@ setup(
     include_package_data=True,
     namespace_packages=['cs'],
     install_requires=requirements,
+    extras_require={
+        'Dogpile':  ["dogpile.cache"],
+        'Kafka':  ["kafka-python", "kazoo", "gevent", "hash_ring"],
+        'PostgreSQL':  ["sixfeetup.bowab", "zope.sqlalchemy"],
+    },
     license="BSD",
     zip_safe=False,
     keywords='zmq async tornado postgresql',
@@ -66,8 +64,8 @@ setup(
         'console_scripts': [
             'eyrie_logger = cs.eyrie.scripts.logger:main',
             'eyrie_injector = cs.eyrie.scripts.log_injector:main',
-            'kafka_consumer = cs.eyrie.scripts.kafka_consumer:main',
-            'kafka_router = cs.eyrie.scripts.kafka_router:main',
+            'kafka_consumer = cs.eyrie.scripts.kafka_consumer:main [Kafka]',
+            'kafka_router = cs.eyrie.scripts.kafka_router:main [Kafka]',
         ]
     },
 )

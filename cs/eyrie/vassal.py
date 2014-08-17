@@ -16,13 +16,16 @@ import multiprocessing
 import os
 from uuid import UUID
 
-from psycopg2 import DatabaseError
-from psycopg2.extras import register_uuid
+try:
+    from sixfeetup.bowab.db import init_sa
+    from psycopg2.extras import register_uuid
+except ImportError:
+    init_sa = None
+    register_uuid = None
 
 from pyramid.config import Configurator
 from pyramid.paster import get_appsettings
 
-from sixfeetup.bowab.db import init_sa
 
 import zmq
 from zmq.eventloop import ioloop
@@ -68,7 +71,7 @@ class Vassal(object):
         self.config = Configurator(settings=app_settings)
         self.curr_proc.authkey = self.config.registry.settings['eyrie.authkey']
 
-        init_db = kwargs.get('init_db', True)
+        init_db = kwargs.get('init_db', False)
         if init_db:
             self.init_db()
 
@@ -80,19 +83,23 @@ class Vassal(object):
             self.loop = loop
 
     def init_db(self):
-        register_uuid()
-        # TODO: look into using Momoko for async
-        #       processing using Tornado's IOLoop
-        #       (LISTEN/NOTIFY currently not supported)
-        #       https://github.com/FSX/momoko/issues/32
-        self.db_session = init_sa(self.config)
-        self.db_engine = self.db_session.get_bind()
-        self.db_conn = self.db_engine.raw_connection()
-        self.db_conn.autocommit = True
-        self.cursor = self.db_conn.cursor()
-        self.cursor.arraysize = 1024
-        # Ensure we back out of any automatic transaction SQLAlchemy started
-        self.db_conn.rollback()
+        if init_sa is None:
+            self.logger.error("Database support requires cs.eyrie to be installed with the PostgreSQL extra: install_requires = ['cs.eyrie[PostgreSQL]']")
+            self.terminate()
+        else:
+            register_uuid()
+            # TODO: look into using Momoko for async
+            #       processing using Tornado's IOLoop
+            #       (LISTEN/NOTIFY currently not supported)
+            #       https://github.com/FSX/momoko/issues/32
+            self.db_session = init_sa(self.config)
+            self.db_engine = self.db_session.get_bind()
+            self.db_conn = self.db_engine.raw_connection()
+            self.db_conn.autocommit = True
+            self.cursor = self.db_conn.cursor()
+            self.cursor.arraysize = 1024
+            # Ensure we back out of any automatic transaction SQLAlchemy started
+            self.db_conn.rollback()
 
     def init_streams(self):
         self.counters = Counter()
@@ -380,14 +387,6 @@ class BatchVassal(Vassal):
                 buf.truncate()
             self.pks_seen.clear()
             self.logger.info("Batch send complete: %d", all_rows)
-        except (DatabaseError,), err:
-            self.logger.exception(err)
-            self.db_conn.rollback()
-            # Reset positions on all buffers so that we can continue
-            # to accumulate message data
-            for buf in self.bufs.values():
-                buf.seek(0, os.SEEK_END)
-            raise err
         except (Exception,), err:
             self.logger.exception(err)
             self.db_conn.rollback()
