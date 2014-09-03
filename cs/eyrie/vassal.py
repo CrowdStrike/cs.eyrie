@@ -92,14 +92,15 @@ class Vassal(object):
             #       processing using Tornado's IOLoop
             #       (LISTEN/NOTIFY currently not supported)
             #       https://github.com/FSX/momoko/issues/32
-            self.db_session = init_sa(self.config)
+            self.db_session = init_sa(self.config, application_name=self.title)
             self.db_engine = self.db_session.get_bind()
             self.db_conn = self.db_engine.raw_connection()
-            self.db_conn.autocommit = True
-            self.cursor = self.db_conn.cursor()
-            self.cursor.arraysize = 1024
             # Ensure we back out of any automatic transaction SQLAlchemy started
             self.db_conn.rollback()
+            self.db_conn.set_session(autocommit=True)
+
+            self.cursor = self.db_conn.cursor()
+            self.cursor.arraysize = 1024
 
     def init_streams(self):
         self.counters = Counter()
@@ -378,7 +379,7 @@ class BatchVassal(Vassal):
                 self.copy_from(name)
                 #self.cursor.execute('RELEASE SAVEPOINT %s;' % name)
                 self.logger.debug("COPY Finished: %s", name)
-            self.db_conn.commit()
+            self.cursor.execute('COMMIT;')
             all_rows = sum(self.row_counts.values())
             self.row_counts.clear()
             # All buffers were copied; it's safe now to truncate
