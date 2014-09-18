@@ -390,7 +390,7 @@ class BatchVassal(Vassal):
             self.logger.info("Batch send complete: %d", all_rows)
         except (Exception,), err:
             self.logger.exception(err)
-            self.db_conn.rollback()
+            self.cursor.execute('ROLLBACK;')
             # Reset positions on all buffers so that we can continue
             # to accumulate message data
             for buf in self.bufs.values():
