@@ -8,7 +8,6 @@ from collections import Counter
 from collections import OrderedDict
 from collections import defaultdict
 from collections import deque
-import csv
 from datetime import timedelta
 from functools import partial
 import logging
@@ -26,6 +25,7 @@ except ImportError:
 from pyramid.config import Configurator
 from pyramid.paster import get_appsettings
 
+import unicodecsv as csv
 
 import zmq
 from zmq.eventloop import ioloop

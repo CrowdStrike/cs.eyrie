@@ -22,6 +22,7 @@ requirements = [
     'setproctitle',
     'setuptools',
     'tornado',
+    'unicodecsv',
 ]
 
 test_requirements = [
