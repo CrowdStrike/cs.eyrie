@@ -146,7 +146,7 @@ class Vassal(object):
             else:
                 return getattr(self, hname)
         else:
-            hname = 'on%s' % cname.replace('_', ' ').title().replace(' ', '')
+            hname = 'on{}'.format(cname.replace('_', ' ').title().replace(' ', ''))
 
         if hasattr(self, hname):
             return getattr(self, hname)
@@ -294,7 +294,7 @@ class BatchVassal(Vassal):
         if savepoint:
             # NOTE: we can't use parameters, as they will be quoted as
             #       data (i.e., using ' ').
-            self.cursor.execute('SAVEPOINT %s;' % sname)
+            self.cursor.execute('SAVEPOINT {};'.format(sname))
 
         self.bufs[name].seek(0)
         self.delete_from(name)
@@ -310,7 +310,7 @@ class BatchVassal(Vassal):
         reader = self.init_reader(name, table.columns.keys())
         # TODO: refactor this to use SQLAlchemy's SQL expression API
         #       http://docs.sqlalchemy.org/en/rel_0_9/core/tutorial.html
-        sql = ['DELETE FROM %s' % table.fullname]
+        sql = ['DELETE FROM {}'.format(table.fullname)]
         sql.append('WHERE')
         where = []
         csv_keys = {pk: [] for pk in pk_cols}
@@ -380,7 +380,7 @@ class BatchVassal(Vassal):
             for table in self.tables:
                 name = table.fullname
                 self.copy_from(name)
-                #self.cursor.execute('RELEASE SAVEPOINT %s;' % name)
+                #self.cursor.execute('RELEASE SAVEPOINT {};'.format(name))
                 self.logger.debug("COPY Finished: %s", name)
             self.cursor.execute('COMMIT;')
             all_rows = sum(self.row_counts.values())

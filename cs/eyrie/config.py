@@ -29,7 +29,7 @@ from zmq.eventloop import ioloop
 
 
 LOGGING_PORT = 16385
-LOGGING_ENDPOINT = 'tcp://127.0.0.1:%d' % LOGGING_PORT
+LOGGING_ENDPOINT = 'tcp://127.0.0.1:{}'.format(LOGGING_PORT)
 
 
 SOCKET_TYPES = {

@@ -116,7 +116,7 @@ class Scribe(Vassal):
         Vassal.channels,
         logger=ZMQChannel(
             # FIXME: make this configurable
-            endpoint='tcp://*:%d' % LOGGING_PORT,
+            endpoint='tcp://*:{}'.format(LOGGING_PORT),
             socket_type=zmq.SUB,
             bind=True,
             subscription=[''],

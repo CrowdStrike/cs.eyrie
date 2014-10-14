@@ -136,7 +136,7 @@ class ZKPartitioner(object):
 
         self._locks = []
         self._client = client
-        self._identifier = identifier or '%s-%s' % (
+        self._identifier = identifier or '{}-{}'.format(
             socket.getfqdn(), os.getpid()
         )
         self._group_path = self.path_formats['group'].format(group=group)
@@ -503,7 +503,7 @@ class ZKConsumer(object):
         for b_id in broker_ids:
             b_json, zstat = self.zk.get('/'.join([self.broker_prefix, b_id]))
             b_data = json.loads(b_json)
-            broker_hosts.append('%s:%d' % (b_data['host'], b_data['port']))
+            broker_hosts.append('{}:{}'.format(b_data['host'], b_data['port']))
 
         if self.client is not None:
             self.client.close()
