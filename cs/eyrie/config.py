@@ -137,6 +137,8 @@ def setup_logging(config_uri, incremental=False, **kwargs):
                         sval = [sval]
                     else:
                         sval = []
+                elif skey in ('backupCount', 'maxBytes'):
+                    sval = int(sval)
                 elif skey == 'stream':
                     sval = logging.config._resolve(sval)
                 elif skey == 'args':
