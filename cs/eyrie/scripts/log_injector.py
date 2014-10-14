@@ -1,6 +1,7 @@
 # Copyright (C) 2014 CrowdStrike, Inc. and contributors
 # This file is subject to the terms and conditions of the BSD License.
 # See the file LICENSE in the main directory for details
+import codecs
 import logging
 import random
 
@@ -38,7 +39,7 @@ class Lawyer(Vassal):
         self.position = 0
         self.text = [
             line
-            for line in this.s.decode('rot13').splitlines()
+            for line in codecs.decode(this.s, 'rot13').splitlines()
             if line
         ]
         self.loop.add_callback(self.onInject)
