@@ -5,7 +5,10 @@ from __future__ import absolute_import
 
 from abc import ABCMeta
 from abc import abstractmethod
-from ConfigParser import RawConfigParser
+try:
+    from ConfigParser import RawConfigParser
+except ImportError:
+    from configparser import RawConfigParser
 import argparse
 from collections import namedtuple
 from copy import copy

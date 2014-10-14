@@ -3,7 +3,10 @@
 # See the file LICENSE in the main directory for details
 from __future__ import absolute_import
 
-from cStringIO import StringIO
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from io import StringIO
 from collections import Counter
 from collections import OrderedDict
 from collections import defaultdict
