@@ -22,8 +22,9 @@ requirements = [
     'setproctitle',
     'setuptools',
     'tornado',
-    'unicodecsv',
 ]
+if sys.version < '3':
+    requirements.append('unicodecsv')
 
 test_requirements = [
     # TODO: put package test requirements here

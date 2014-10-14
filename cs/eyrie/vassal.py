@@ -28,7 +28,10 @@ except ImportError:
 from pyramid.config import Configurator
 from pyramid.paster import get_appsettings
 
-import unicodecsv as csv
+try:
+    import unicodecsv as csv
+except ImportError:
+    import csv
 
 import zmq
 from zmq.eventloop import ioloop
