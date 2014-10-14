@@ -18,6 +18,7 @@ from logging.config import dictConfig
 import multiprocessing
 import os
 import signal
+import sys
 import traceback
 
 from pyramid.settings import asbool
@@ -74,20 +75,33 @@ DEFAULT_ITERATIONS = 100000
 DEFAULT_IV_BITS = 96
 
 
-class LogMessageHandler(object):
+if sys.version > '3':
+    class LogMessageHandler(object, metaclass=ABCMeta):
 
-    __metaclass__ = ABCMeta
+        @abstractmethod
+        def handle(self, msg):
+            return msg
 
-    @abstractmethod
-    def handle(self, msg):
-        return msg
+        @classmethod
+        def __subclasshook__(cls, C):
+            if cls is LogMessageHandler:
+                if any("handle" in B.__dict__ for B in C.__mro__):
+                    return True
+            return NotImplemented
+else:
+    class LogMessageHandler(object, metaclass=ABCMeta):
+        __metaclass__ = ABCMeta
 
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is LogMessageHandler:
-            if any("handle" in B.__dict__ for B in C.__mro__):
-                return True
-        return NotImplemented
+        @abstractmethod
+        def handle(self, msg):
+            return msg
+
+        @classmethod
+        def __subclasshook__(cls, C):
+            if cls is LogMessageHandler:
+                if any("handle" in B.__dict__ for B in C.__mro__):
+                    return True
+            return NotImplemented
 
 
 # Unfortunately, RawConfigParser forces all option keys to lower-case
