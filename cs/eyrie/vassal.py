@@ -394,7 +394,7 @@ class BatchVassal(Vassal):
                 buf.truncate()
             self.pks_seen.clear()
             self.logger.info("Batch send complete: %d", all_rows)
-        except (Exception,), err:
+        except Exception as err:
             self.logger.exception(err)
             self.cursor.execute('ROLLBACK;')
             # Reset positions on all buffers so that we can continue
