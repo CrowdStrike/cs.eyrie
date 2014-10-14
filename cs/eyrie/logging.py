@@ -125,7 +125,7 @@ class FernetHandler(ZMQHandler):
     def emit(self, record):
         serialized_record = self.serialize(record)
         if serialized_record:
-            token = self.fernet.encrypt(serialized_record)
+            token = self.fernet.encrypt(serialized_record.encode('utf8'))
             self.send(logger_name=record.name, serialized_record=token)
 
 

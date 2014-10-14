@@ -143,7 +143,8 @@ class Scribe(Vassal):
             self.logger.info(txt, 'multiprocessing.current_process().authkey')
             kwargs['authkey'] = self.curr_proc.authkey
         if 'authkey_salt' not in kwargs:
-            kwargs['authkey_salt'] = self.config.registry.settings['eyrie.authkey_salt']
+            settings = self.config.registry.settings
+            kwargs['authkey_salt'] = settings['eyrie.authkey_salt'].encode('utf8')
 
         self.handlers = {}
         for klass in self.handler_classes:

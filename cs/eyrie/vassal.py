@@ -75,7 +75,7 @@ class Vassal(object):
 
         app_settings = get_appsettings(self.config_uri, name=self.app_name)
         self.config = Configurator(settings=app_settings)
-        self.curr_proc.authkey = self.config.registry.settings['eyrie.authkey']
+        self.curr_proc.authkey = self.config.registry.settings['eyrie.authkey'].encode('utf8')
 
         init_db = kwargs.get('init_db', False)
         if init_db:
@@ -127,7 +127,7 @@ class Vassal(object):
 
         if zmq_channel.socket_type == zmq.SUB and zmq_channel.subscription:
             for prefix in zmq_channel.subscription:
-                socket.setsockopt(zmq.SUBSCRIBE, prefix)
+                socket.setsockopt_string(zmq.SUBSCRIBE, prefix)
 
         stream = ZMQStream(socket, io_loop=self.loop)
         stream.channel_name = sname
