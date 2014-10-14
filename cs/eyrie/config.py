@@ -25,6 +25,8 @@ from pyramid.settings import asbool
 
 from setproctitle import setproctitle
 
+import six
+
 import zmq
 from zmq.eventloop import ioloop
 
@@ -75,33 +77,19 @@ DEFAULT_ITERATIONS = 100000
 DEFAULT_IV_BITS = 96
 
 
-if sys.version > '3':
-    class LogMessageHandler(object, metaclass=ABCMeta):
+@six.add_metaclass(ABCMeta)
+class LogMessageHandler(object):
 
-        @abstractmethod
-        def handle(self, msg):
-            return msg
+    @abstractmethod
+    def handle(self, msg):
+        return msg
 
-        @classmethod
-        def __subclasshook__(cls, C):
-            if cls is LogMessageHandler:
-                if any("handle" in B.__dict__ for B in C.__mro__):
-                    return True
-            return NotImplemented
-else:
-    class LogMessageHandler(object, metaclass=ABCMeta):
-        __metaclass__ = ABCMeta
-
-        @abstractmethod
-        def handle(self, msg):
-            return msg
-
-        @classmethod
-        def __subclasshook__(cls, C):
-            if cls is LogMessageHandler:
-                if any("handle" in B.__dict__ for B in C.__mro__):
-                    return True
-            return NotImplemented
+    @classmethod
+    def __subclasshook__(cls, C):
+        if cls is LogMessageHandler:
+            if any("handle" in B.__dict__ for B in C.__mro__):
+                return True
+        return NotImplemented
 
 
 # Unfortunately, RawConfigParser forces all option keys to lower-case

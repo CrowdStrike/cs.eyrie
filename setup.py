@@ -22,6 +22,7 @@ requirements = [
     'setproctitle',
     'setuptools',
     'tornado',
+    'six',
 ]
 if sys.version < '3':
     requirements.append('unicodecsv')
