@@ -63,8 +63,12 @@ class ZMQHandler(logging.Handler):
         kwargs.setdefault('serialization_format', self.serialization_format)
         kwargs.setdefault('version', self.version)
         for fname in ('digest', 'iv', 'tag'):
-            kwargs.setdefault(fname, '')
-        frames = self.frame_class(**kwargs)
+            kwargs.setdefault(fname, b'')
+        enc_kwargs = {
+            k: v if isinstance(v, bytes) else v.encode('utf8')
+            for k, v in kwargs.items()
+        }
+        frames = self.frame_class(**enc_kwargs)
         try:
             if self.async:
                 if self.stream.closed():

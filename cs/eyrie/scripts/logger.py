@@ -149,7 +149,7 @@ class Scribe(Vassal):
         self.handlers = {}
         for klass in self.handler_classes:
             try:
-                self.handlers[klass.__name__] = klass(**kwargs)
+                self.handlers[klass.__name__.encode('utf8')] = klass(**kwargs)
             except TypeError as err:
                 self.logger.error(err.message)
 
@@ -162,10 +162,10 @@ class Scribe(Vassal):
     def deserialize(self,
                     logger_name,
                     serialized_record, serialization_format):
-        if serialization_format == 'pickle':
+        if serialization_format == b'pickle':
             return pickle.loads(serialized_record)
-        elif serialization_format == 'json':
-            rdata = json.loads(serialized_record)
+        elif serialization_format == b'json':
+            rdata = json.loads(serialized_record.decode('utf8'))
             if 'args' in rdata and isinstance(rdata['args'], list):
                 rdata['args'] = tuple(rdata['args'])
             return logging.makeLogRecord(rdata)
@@ -209,7 +209,7 @@ class Scribe(Vassal):
             self.logger.error(txt, msg.logger_name)
             return
 
-        record.hostname = msg.hostname
+        record.hostname = msg.hostname.decode('utf8')
         self.handleLogRecord(record)
 
     def onReport(self):
