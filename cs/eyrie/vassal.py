@@ -127,7 +127,7 @@ class Vassal(object):
 
         if zmq_channel.socket_type == zmq.SUB and zmq_channel.subscription:
             for prefix in zmq_channel.subscription:
-                socket.setsockopt_string(zmq.SUBSCRIBE, prefix)
+                socket.setsockopt(zmq.SUBSCRIBE, prefix.encode('utf8'))
 
         stream = ZMQStream(socket, io_loop=self.loop)
         stream.channel_name = sname
