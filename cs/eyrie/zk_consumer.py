@@ -21,6 +21,7 @@ try:
     from kazoo.exceptions import KazooException
     from kazoo.exceptions import NodeExistsError
     from kazoo.protocol.states import KazooState
+    from kazoo.recipe.party import ShallowParty
     from kazoo.retry import KazooRetry
     from kazoo.retry import RetryFailedError
     from kazoo.recipe.watchers import PatientChildrenWatch
@@ -34,6 +35,7 @@ except ImportError:
     KazooException = None
     NodeExistsError = None
     KazooState = None
+    ShallowParty = None
     KazooRetry = None
     RetryFailedError = None
     PatientChildrenWatch = None
@@ -414,6 +416,43 @@ class ZKPartitioner(object):
             self.partitions_changed_cb(self.consumer_partitions[self._identifier])
 
 
+class StaticShallowParty(ShallowParty):
+
+    def __init__(self, client, path, nodes, identifier=None):
+        self._nodes = nodes
+        super(StaticShallowParty, self).__init__(client, path, identifier)
+
+    def _get_children(self):
+        return self._nodes
+
+
+class StaticZKPartitioner(ZKPartitioner):
+
+    def __init__(self, client, group, topic, nodes,
+                 identifier=None, time_boundary=30,
+                 partitions_changed_cb=None, logger=None):
+        self._nodes = nodes
+        super(StaticZKPartitioner, self).__init__(client, group, topic,
+                                                  identifier, time_boundary,
+                                                  partitions_changed_cb, logger)
+
+    def join_group(self):
+        self._group = StaticShallowParty(self._client, self._group_path,
+                                         self._nodes, self._identifier)
+        # Mimic Scala data:
+        # {"version":1,"subscription":{"foo.bar":1},"pattern":"static","timestamp":"1404263054520"}
+        subscription = {
+            'version': 1,
+            'subscription': {self.topic: 1},
+            'pattern': 'static',
+            'timestamp': str(int(time.time() * 1000)),
+        }
+        self._group.data = json.dumps(subscription)
+        self.logger.info('Joining consumer group %s as %s',
+                         self._group_path, self._identifier)
+        self._group.join()
+
+
 class ZKConsumer(object):
 
     zk_timeout = 30
@@ -425,6 +464,7 @@ class ZKConsumer(object):
             zk_hosts,
             group,
             topic,
+            nodes,
             zk_handler=None,
             logger=None,
             **consumer_kwargs):
@@ -446,6 +486,7 @@ class ZKConsumer(object):
         self.topic = topic
 
         self.zk = None
+        self.nodes = nodes
         self.client = None
         self.consumer = None
         self.consumer_kwargs = consumer_kwargs
@@ -473,10 +514,19 @@ class ZKConsumer(object):
             self.zk.handler.spawn(self.init_zkp)
 
     def init_zkp(self):
-        self.zkp = ZKPartitioner(self.zk, self.group, self.topic,
-                                 time_boundary=self.jitter_seconds,
-                                 partitions_changed_cb=self.init_consumer,
-                                 logger=self.logger)
+        if self.nodes:
+            self.zkp = StaticZKPartitioner(
+                self.zk, self.group, self.topic, self.nodes,
+                time_boundary=self.jitter_seconds,
+                partitions_changed_cb=self.init_consumer,
+                logger=self.logger)
+        else:
+            self.zkp = ZKPartitioner(
+                self.zk, self.group, self.topic,
+                time_boundary=self.jitter_seconds,
+                partitions_changed_cb=self.init_consumer,
+                logger=self.logger)
+
 
         @self.zk.ChildrenWatch(self.broker_prefix)
         def broker_change_proxy(broker_ids):
