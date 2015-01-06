@@ -107,7 +107,7 @@ class Ranger(object):
             for msg in self.consumer.get_messages(self.fetch_count,
                                                   block=False):
                 self.msg_count += 1
-                self.channel.send(msg.message.value)
+                gevent.spawn_later(0, self.channel.send, msg.message.value)
         except Exception:
             self.logger.exception('Error encountered')
         finally:
