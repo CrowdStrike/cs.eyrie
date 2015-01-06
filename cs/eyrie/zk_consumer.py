@@ -420,8 +420,6 @@ class StaticShallowParty(ShallowParty):
 
     def __init__(self, client, path, nodes, identifier=None):
         self._nodes = nodes
-        if identifier is None:
-            identifier = socket.getfqdn()
         super(StaticShallowParty, self).__init__(client, path, identifier)
 
     def _get_children(self):
@@ -434,6 +432,8 @@ class StaticZKPartitioner(ZKPartitioner):
                  identifier=None, time_boundary=30,
                  partitions_changed_cb=None, logger=None):
         self._nodes = nodes
+        if identifier is None:
+            identifier = socket.getfqdn()
         super(StaticZKPartitioner, self).__init__(client, group, topic,
                                                   identifier, time_boundary,
                                                   partitions_changed_cb, logger)
