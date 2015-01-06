@@ -109,7 +109,9 @@ class Ranger(object):
                 self.msg_count += 1
                 gevent.spawn_later(0, self.channel.send, msg.message.value)
         except Exception:
-            self.logger.exception('Error encountered')
+            self.logger.exception('Error encountered, restarting consumer')
+            self.consumer.stop()
+            self.consumer.init_zk()
         finally:
             self.consume_greenlet = gevent.spawn_later(0, self.onConsume)
 
