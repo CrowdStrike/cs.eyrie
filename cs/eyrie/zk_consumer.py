@@ -14,6 +14,7 @@ try:
     from hash_ring import HashRing
 
     from kafka.client import KafkaClient
+    from kafka.common import FailedPayloadsError
     from kafka.consumer import SimpleConsumer
 
     from kazoo.client import KazooClient
@@ -27,6 +28,7 @@ try:
 except ImportError:
     HashRing = None
     KafkaClient = None
+    FailedPayloadsError = None
     SimpleConsumer = None
     KazooClient = None
     KazooException = None
@@ -590,7 +592,14 @@ class ZKConsumer(object):
         if self.consumer is None:
             return []
         else:
-            return self.consumer.get_messages(count, block, timeout)
+            try:
+                return self.consumer.get_messages(count, block, timeout)
+            except FailedPayloadsError:
+                msg = 'Failed to retrieve payload, restarting consumer'
+                self.logger.exception(msg)
+                self.stop()
+                self.init_zk()
+                return []
 
     def get_message(self, block=True, timeout=0.1, get_partition_info=None):
         return self.consumer.get_message(block, timeout, get_partition_info)
