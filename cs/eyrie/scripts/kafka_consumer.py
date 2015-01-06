@@ -16,6 +16,7 @@ from kazoo.protocol.states import KazooState
 from pyramid.config import Configurator
 from pyramid.exceptions import ConfigurationError
 from pyramid.paster import get_appsettings
+from pyramid.config import aslist
 
 from setproctitle import setproctitle
 
@@ -69,6 +70,9 @@ class Ranger(object):
         topic = settings.get('kafka.topic', topic)
         if topic is None:
             raise ConfigurationError('No topic provided to consume')
+        consumers = settings.get('kafka.consumers', None)
+        if consumers:
+            consumers = aslist(consumers)
 
         self.consumer = ZKConsumer(
             zk_hosts,
@@ -81,6 +85,7 @@ class Ranger(object):
             max_buffer_size=int(settings.get('kafka.max_buffer_size',
                                              self.max_buffer_size)),
             auto_commit=False,
+            nodes=consumers,
         )
         self.consumer.zk.add_listener(self.zk_session_watch)
 
