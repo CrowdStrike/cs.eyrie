@@ -99,11 +99,12 @@ class Ranger(object):
                                               self.commit_interval+15))
         self.throughput_greenlet = gevent.spawn_later(commit_interval,
                                                       self.onThroughput)
-        initial_sleep = random.choice(range(5, 15))
-        self.logger.info('Sleeping for %d seconds before pulling',
-                         initial_sleep)
-        self.consume_greenlet = gevent.spawn_later(initial_sleep,
-                                                   self.onConsume)
+        if not self.consumer.nodes:
+            initial_sleep = random.choice(range(5, 15))
+            self.logger.info('Sleeping for %d seconds before pulling',
+                             initial_sleep)
+            self.consume_greenlet = gevent.spawn_later(initial_sleep,
+                                                       self.onConsume)
         hub = gevent.get_hub()
         hub.join()
 

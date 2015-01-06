@@ -429,7 +429,7 @@ class StaticShallowParty(ShallowParty):
 class StaticZKPartitioner(ZKPartitioner):
 
     def __init__(self, client, group, topic, nodes,
-                 identifier=None, time_boundary=30,
+                 identifier=None, time_boundary=0,
                  partitions_changed_cb=None, logger=None):
         self._nodes = nodes
         if identifier is None:
@@ -519,7 +519,6 @@ class ZKConsumer(object):
         if self.nodes:
             self.zkp = StaticZKPartitioner(
                 self.zk, self.group, self.topic, self.nodes,
-                time_boundary=self.jitter_seconds,
                 partitions_changed_cb=self.init_consumer,
                 logger=self.logger)
         else:
