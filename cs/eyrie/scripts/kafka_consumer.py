@@ -107,12 +107,18 @@ class Ranger(object):
         hub = gevent.get_hub()
         hub.join()
 
+    def send(self, msg):
+        try:
+            self.channel.send(msg)
+        except AssertionError:
+            gevent.spawn_later(0, self.send, msg)
+
     def onConsume(self):
         try:
             for msg in self.consumer.get_messages(self.fetch_count,
                                                   block=False):
                 self.msg_count += 1
-                gevent.spawn_later(0, self.channel.send, msg.message.value)
+                self.send(msg.message.value)
         except Exception:
             self.logger.exception('Error encountered, restarting consumer')
             self.consumer.stop()
