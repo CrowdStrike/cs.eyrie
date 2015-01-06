@@ -420,6 +420,8 @@ class StaticShallowParty(ShallowParty):
 
     def __init__(self, client, path, nodes, identifier=None):
         self._nodes = nodes
+        if identifier is None:
+            identifier = socket.getfqdn()
         super(StaticShallowParty, self).__init__(client, path, identifier)
 
     def _get_children(self):
