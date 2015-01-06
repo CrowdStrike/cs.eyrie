@@ -530,13 +530,17 @@ class ZKConsumer(object):
         if self.consumer is not None:
             self.logger.info('Stopping Kafka consumer')
             self.consumer.stop()
+            self.consumer = None
         if self.client is not None:
             self.logger.info('Stopping Kafka client')
             self.client.close()
+            self.client = None
         if self.zk is not None:
             self.logger.info('Stopping ZooKeeper client')
             self.zkp.finish()
+            self.zkp = None
             self.zk.stop()
+            self.zk = None
 
     def commit(self, partitions=None):
         """
