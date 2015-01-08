@@ -567,7 +567,9 @@ class ZKConsumer(object):
             self.client.close()
             self.client = None
 
-        self.client = KafkaClient(broker_hosts, client_id=self.zkp._identifier)
+        self.logger.warn('Brokers changed, starting Kafka client.')
+        self.client = KafkaClient(self.broker_hosts,
+                                  client_id=self.zkp._identifier)
 
     def init_consumer(self, my_partitions):
         if self.consumer is not None:
