@@ -528,11 +528,6 @@ class ZKConsumer(object):
                 partitions_changed_cb=self.init_consumer,
                 logger=self.logger)
 
-
-        @self.zk.ChildrenWatch(self.broker_prefix)
-        def broker_change_proxy(broker_ids):
-            self.onBrokerChange(broker_ids)
-
         while 1:
             if self.zkp.failed:
                 raise Exception("Lost or unable to acquire partition")
@@ -551,6 +546,9 @@ class ZKConsumer(object):
         self.init_zkp()
         self.zk.add_listener(self.zk_session_watch)
 
+        @self.zk.ChildrenWatch(self.broker_prefix)
+        def broker_change_proxy(broker_ids):
+            self.onBrokerChange(broker_ids)
     def onBrokerChange(self, broker_ids):
         broker_hosts = []
         for b_id in broker_ids:
