@@ -558,6 +558,10 @@ class ZKConsumer(object):
             b_data = json.loads(b_json)
             broker_hosts.append('{}:{}'.format(b_data['host'], b_data['port']))
 
+        if self.consumer is not None:
+            self.logger.warn('Brokers changed, stopping Kafka consumer.')
+            self.consumer.stop()
+            self.consumer = None
         if self.client is not None:
             self.client.close()
 
