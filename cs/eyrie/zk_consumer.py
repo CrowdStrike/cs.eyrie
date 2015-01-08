@@ -563,7 +563,9 @@ class ZKConsumer(object):
             self.consumer.stop()
             self.consumer = None
         if self.client is not None:
+            self.logger.warn('Brokers changed, stopping Kafka client.')
             self.client.close()
+            self.client = None
 
         self.client = KafkaClient(broker_hosts, client_id=self.zkp._identifier)
 
