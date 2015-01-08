@@ -483,6 +483,7 @@ class ZKConsumer(object):
             raise RuntimeError("Kafka support requires cs.eyrie to be installed with the Kafka extra: install_requires= ['cs.eyrie[Kafka]']")
         self.zk_handler = zk_handler
         self.zk_hosts = zk_hosts
+        self.broker_hosts = []
 
         self.group = group
         self.topic = topic
@@ -547,11 +548,12 @@ class ZKConsumer(object):
         self.init_zkp()
 
     def onBrokerChange(self, broker_ids):
-        broker_hosts = []
+        self.broker_hosts = []
         for b_id in broker_ids:
             b_json, zstat = self.zk.get('/'.join([self.broker_prefix, b_id]))
             b_data = json.loads(b_json)
-            broker_hosts.append('{}:{}'.format(b_data['host'], b_data['port']))
+            self.broker_hosts.append('{}:{}'.format(b_data['host'],
+                                                    b_data['port']))
 
         if self.consumer is not None:
             self.logger.warn('Brokers changed, stopping Kafka consumer.')
@@ -562,11 +564,12 @@ class ZKConsumer(object):
             self.client.close()
             self.client = None
 
-        self.logger.warn('Brokers changed, starting Kafka client.')
-        self.client = KafkaClient(broker_hosts, client_id=self.zkp._identifier)
-
     def init_consumer(self, my_partitions):
-        if self.consumer is not None:
+        if self.consumer is None:
+            self.logger.warn('Starting Kafka client')
+            self.client = KafkaClient(self.broker_hosts,
+                                      client_id=self.zkp._identifier)
+        else:
             if sorted(my_partitions) != sorted(self.consumer.offsets.keys()):
                 self.logger.warn('Partitions changed, restarting Kafka consumer.')
                 self.consumer.stop()
@@ -577,7 +580,7 @@ class ZKConsumer(object):
         self.consumer = SimpleConsumer(self.client, self.group, self.topic,
                                        partitions=my_partitions,
                                        **self.consumer_kwargs)
-        self.logger.info("Connected to Kafka: %s", self.consumer.offsets)
+        self.logger.info("Consumer connected to Kafka: %s", self.consumer.offsets)
 
     def stop(self):
         if self.consumer is not None:
