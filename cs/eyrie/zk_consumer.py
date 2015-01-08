@@ -204,7 +204,7 @@ class ZKPartitioner(object):
             'version': 1,
             'subscription': {self.topic: 1},
             'pattern': 'static',
-            'timestamp': int(time.time() * 1000),
+            'timestamp': str(int(time.time() * 1000)),
         }
         self._group.data = json.dumps(subscription)
         self.logger.info('Joining consumer group %s as %s',
