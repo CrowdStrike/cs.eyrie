@@ -506,9 +506,6 @@ class ZKConsumer(object):
             self.logger.info('Stopping Kafka consumer')
             self.consumer.stop()
             self.consumer = None
-            self.logger.info('Closing Kafka client')
-            self.client.close()
-            self.client = None
         elif state == KazooState.CONNECTED and \
            self.zkp is not None and \
            self.zkp.failed:
