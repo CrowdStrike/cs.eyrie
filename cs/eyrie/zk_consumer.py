@@ -506,9 +506,7 @@ class ZKConsumer(object):
             self.logger.info('Stopping Kafka consumer')
             self.consumer.stop()
             self.consumer = None
-        elif state == KazooState.CONNECTED and \
-           self.zkp is not None and \
-           self.zkp.failed:
+        elif state == KazooState.CONNECTED:
             self.logger.info('Restarting ZK partitioner')
             self.zk.handler.spawn(self.init_zkp)
 
