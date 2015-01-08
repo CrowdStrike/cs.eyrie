@@ -543,12 +543,14 @@ class ZKConsumer(object):
         # 1. implement kazoo.interfaces.IHandler in terms of Tornado's IOLoop
         self.zk = KazooClient(hosts=self.zk_hosts, handler=self.zk_handler)
         self.zk.start()
-        self.init_zkp()
         self.zk.add_listener(self.zk_session_watch)
 
         @self.zk.ChildrenWatch(self.broker_prefix)
         def broker_change_proxy(broker_ids):
             self.onBrokerChange(broker_ids)
+
+        self.init_zkp()
+
     def onBrokerChange(self, broker_ids):
         broker_hosts = []
         for b_id in broker_ids:
