@@ -134,7 +134,7 @@ class Ranger(object):
         try:
             self.commit_greenlet = gevent.spawn(self.consumer.commit)
             currSample = time.time()
-            msg = 'Current %s feed throughput: %s events / second'
+            msg = 'Current %s feed throughput: %0.1f events / second'
             eps = self.msg_count / (currSample - self.lastSample)
             self.logger.info(msg, self.consumer.topic, eps)
             self.lastSample = currSample
