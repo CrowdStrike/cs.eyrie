@@ -116,7 +116,7 @@ class Ranger(object):
         try:
             kmsg = KafkaMessage(
                 self.consumer.topic, str(partition), str(msg.offset),
-                msg.message.key, msg.message.value,
+                msg.message.key or '', msg.message.value or '',
             )
             self.channel.send_multipart(kmsg)
         except AssertionError:
