@@ -113,7 +113,8 @@ class Ranger(object):
 
     def send(self, msg):
         try:
-            self.channel.send(msg)
+            # msg is an instance of the kafka.common.KafkaMessage namedtuple
+            self.channel.send_multipart(msg)
         except AssertionError:
             gevent.spawn_later(0, self.send, msg)
 
@@ -122,7 +123,7 @@ class Ranger(object):
             for msg in self.consumer.get_messages(self.fetch_count,
                                                   block=False):
                 self.msg_count += 1
-                self.send(msg.message.value)
+                self.send(msg.message)
         except Exception:
             self.logger.exception('Error encountered, restarting consumer')
             self.consumer.stop()
