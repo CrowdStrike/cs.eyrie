@@ -114,7 +114,6 @@ class Ranger(object):
 
     def send(self, partition, msg):
         try:
-            import pdb;pdb.set_trace()
             kmsg = KafkaMessage(
                 self.consumer.topic, str(partition), str(msg.offset),
                 msg.message.key, msg.message.value,
