@@ -10,12 +10,12 @@ import zmq
 from zmq.devices import ThreadProxy
 
 from cs.eyrie.scripts.kafka_consumer import Ranger
-from cs.eyrie.config import setup_logging
+from cs.eyrie.config import ROUTER_MONITOR, ROUTER_OUTBOUND, setup_logging
 
 
 def main(inbound=Ranger.output.endpoint,
-         outbound='ipc:///tmp/kafka_consume.ipc',
-         monitor='ipc:///tmp/kafka_monitor.ipc'):
+         outbound=ROUTER_OUTBOUND,
+         monitor=ROUTER_MONITOR):
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config',
                         help='Path to config file',

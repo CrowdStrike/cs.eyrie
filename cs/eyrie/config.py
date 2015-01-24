@@ -33,6 +33,8 @@ from zmq.eventloop import ioloop
 
 LOGGING_PORT = 16385
 LOGGING_ENDPOINT = 'tcp://127.0.0.1:{}'.format(LOGGING_PORT)
+ROUTER_OUTBOUND = 'ipc:///tmp/kafka_consume.ipc'
+ROUTER_MONITOR = 'ipc:///tmp/kafka_monitor.ipc'
 
 
 SOCKET_TYPES = {
