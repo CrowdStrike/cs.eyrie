@@ -10,6 +10,8 @@ import time
 
 import gevent
 
+from kafka.common import KafkaMessage
+
 from kazoo.handlers.gevent import SequentialGeventHandler
 from kazoo.protocol.states import KazooState
 
@@ -110,19 +112,23 @@ class Ranger(object):
         hub = gevent.get_hub()
         hub.join()
 
-    def send(self, msg):
+    def send(self, partition, msg):
         try:
-            # msg is an instance of the kafka.common.KafkaMessage namedtuple
-            self.channel.send_multipart(msg)
+            import pdb;pdb.set_trace()
+            kmsg = KafkaMessage(
+                self.consumer.topic, str(partition), str(msg.offset),
+                msg.message.key, msg.message.value,
+            )
+            self.channel.send_multipart(kmsg)
         except AssertionError:
             gevent.spawn_later(0, self.send, msg)
 
     def onConsume(self):
         try:
-            for msg in self.consumer.get_messages(self.fetch_count,
-                                                  block=False):
+            for partition_msg in self.consumer.get_messages(self.fetch_count,
+                                                            block=False):
                 self.msg_count += 1
-                self.send(msg.message)
+                self.send(*partition_msg)
         except Exception:
             self.logger.exception('Error encountered, restarting consumer')
             self.consumer.stop()

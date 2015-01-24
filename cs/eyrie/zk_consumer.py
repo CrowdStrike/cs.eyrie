@@ -580,6 +580,7 @@ class ZKConsumer(object):
         self.consumer = SimpleConsumer(self.client, self.group, self.topic,
                                        partitions=my_partitions,
                                        **self.consumer_kwargs)
+        self.consumer.provide_partition_info()
         self.logger.info("Consumer connected to Kafka: %s", self.consumer.offsets)
 
     def stop(self):
