@@ -28,6 +28,8 @@ except ImportError:
 from pyramid.config import Configurator
 from pyramid.paster import get_appsettings
 
+from tornado.concurrent import is_future
+
 try:
     import unicodecsv as csv
 except ImportError:
@@ -187,7 +189,9 @@ class Vassal(object):
             #buf_len = self.counters[cname] - self.counters[output_cname]
             #self.logger.debug('Received on %s: %d', cname, buf_len)
             handler = self.get_recv_handler(cname)
-            handler(msg)
+            fut = handler(msg)
+            if is_future(fut):
+                self.io_loop.add_future(fut, lambda x: x)
             if output_cname:
                 buf_len = self.streams[output_cname]._send_queue.qsize()
                 if buf_len > self.channels[cname].hwm:
