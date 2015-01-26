@@ -58,8 +58,8 @@ class Ranger(object):
         self.commit_interval = int(settings.get('kafka.commit_interval',
                                                 self.commit_interval))
         self.commit_greenlet = None
-        self.commit_spawn_greenlet = None
         self.consume_greenlet = None
+        self.throughput_greenlet = None
         self.fetch_count = int(settings.get('kafka.fetch_count',
                                             self.fetch_count))
 
@@ -94,12 +94,13 @@ class Ranger(object):
         self.context = zmq.Context()
         self.channel = self.context.socket(self.output.socket_type)
         self.channel.connect(self.output.endpoint)
+        self.lastSample = time.time()
 
     def __call__(self):
         commit_interval = random.choice(range(self.commit_interval-15,
                                               self.commit_interval+15))
-        self.commit_spawn_greenlet = gevent.spawn_later(commit_interval,
-                                                        self.onCommitSpawn)
+        self.throughput_greenlet = gevent.spawn_later(commit_interval,
+                                                      self.onThroughput)
         if self.consumer.nodes:
             self.logger.info('Beginning pull')
             self.consume_greenlet = gevent.spawn_later(0, self.onConsume)
@@ -135,16 +136,22 @@ class Ranger(object):
         finally:
             self.consume_greenlet = gevent.spawn_later(0, self.onConsume)
 
-    def onCommitSpawn(self):
+    def onThroughput(self):
         try:
             self.commit_greenlet = gevent.spawn(self.consumer.commit)
+            currSample = time.time()
+            msg = 'Current %s feed throughput: %0.1f events / second'
+            eps = self.msg_count / (currSample - self.lastSample)
+            self.logger.info(msg, self.consumer.topic, eps)
+            self.lastSample = currSample
+            self.msg_count = 0
         except Exception:
             self.logger.exception('Error encountered while committing')
         finally:
             commit_interval = random.choice(range(self.commit_interval-15,
                                                   self.commit_interval+15))
-            self.commit_spawn_greenlet = gevent.spawn_later(commit_interval,
-                                                            self.onCommitSpawn)
+            self.throughput_greenlet = gevent.spawn_later(commit_interval,
+                                                          self.onThroughput)
 
     def zk_session_watch(self, state):
         self.logger.debug('ZK transitioned to: %s', state)
@@ -153,9 +160,9 @@ class Ranger(object):
             self.consume_greenlet = gevent.spawn_later(0, self.onConsume)
             commit_interval = random.choice(range(self.commit_interval-15,
                                                   self.commit_interval+15))
-            self.logger.info('Resuming commit spawn greenlet')
-            self.commit_spawn_greenlet = gevent.spawn_later(commit_interval,
-                                                            self.onCommitSpawn)
+            self.logger.info('Resuming throughput greenlet')
+            self.throughput_greenlet = gevent.spawn_later(commit_interval,
+                                                          self.onThroughput)
         elif state == KazooState.SUSPENDED:
             if self.commit_greenlet is not None:
                 self.logger.info('Killing commit greenlet')
@@ -163,9 +170,9 @@ class Ranger(object):
             if self.consume_greenlet is not None:
                 self.logger.info('Killing consume greenlet')
                 self.consume_greenlet = self.consume_greenlet.kill()
-            if self.commit_spawn_greenlet is not None:
-                self.logger.info('Killing commit spawn greenlet')
-                self.commit_spawn_greenlet = self.commit_spawn_greenlet.kill()
+            if self.throughput_greenlet is not None:
+                self.logger.info('Killing throughput greenlet')
+                self.throughput_greenlet = self.throughput_greenlet.kill()
 
 
 def main():
