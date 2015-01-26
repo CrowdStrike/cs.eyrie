@@ -120,7 +120,7 @@ class Ranger(object):
             )
             self.channel.send_multipart(kmsg)
         except AssertionError:
-            gevent.spawn_later(0, self.send, msg)
+            gevent.spawn_later(0, self.send, partition, msg)
 
     def onConsume(self):
         try:
