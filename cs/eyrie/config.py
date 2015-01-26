@@ -253,7 +253,7 @@ def script_main(script_class, cache_region, loop=None):
 
     def hup_signal_handler(signal, frame):
         setup_logging(vassal.config_uri, incremental=True,
-                      context=vassal.context)
+                      context=vassal.context, loop=vassal.loop, async=True)
 
     def term_signal_handler(signal, frame):
         vassal.logger.info("%s has stopped processing messages",
