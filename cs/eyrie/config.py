@@ -208,7 +208,7 @@ def info_signal_handler(signal, frame):
                  ''.join(traceback.format_stack(frame)))
 
 
-def script_main(script_class, cache_region, loop=None):
+def script_main(script_class, cache_region, loop=None, start_loop=True):
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config',
@@ -272,6 +272,10 @@ def script_main(script_class, cache_region, loop=None):
     vassal.loop.add_callback(vassal.logger.info,
                              "%s has begun processing messages",
                              script_class.__name__)
-    vassal.loop.start()
+    if start_loop:
+        try:
+            vassal.loop.start()
+        except zmq.Again:
+            print 'Terminating with unsent messages'
 
     return vassal
