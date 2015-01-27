@@ -185,13 +185,14 @@ class Vassal(object):
         try:
             cname = stream.channel_name
             self.counters[cname] += 1
-            output_cname = self.channels[cname].drained_by
             #buf_len = self.counters[cname] - self.counters[output_cname]
             #self.logger.debug('Received on %s: %d', cname, buf_len)
             handler = self.get_recv_handler(cname)
             fut = handler(msg)
             if is_future(fut):
                 self.loop.add_future(fut, lambda x: x)
+
+            output_cname = self.channels[cname].drained_by
             if output_cname:
                 buf_len = self.streams[output_cname]._send_queue.qsize()
                 if buf_len > self.channels[cname].hwm:
