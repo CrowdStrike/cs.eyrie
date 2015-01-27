@@ -178,6 +178,12 @@ class Vassal(object):
             self.logger.warning(msg, self.__class__.__name__)
             self.terminate()
 
+    def onFuture(self, fut):
+        try:
+            fut.result()
+        except Exception as err:
+            self.logger.exception(err)
+
     def onRecvStream(self, stream, msg):
         # If the handler triggers an exception, pyzmq will disable it
         # Here we catch any exception and just log it, so that processing
@@ -190,7 +196,7 @@ class Vassal(object):
             handler = self.get_recv_handler(cname)
             fut = handler(msg)
             if is_future(fut):
-                self.loop.add_future(fut, lambda x: x)
+                self.loop.add_future(fut, self.onFuture)
 
             output_cname = self.channels[cname].drained_by
             if output_cname:
