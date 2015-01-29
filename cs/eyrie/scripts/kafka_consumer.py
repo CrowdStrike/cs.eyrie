@@ -174,6 +174,21 @@ class Ranger(object):
                 self.logger.info('Killing throughput greenlet')
                 self.throughput_greenlet = self.throughput_greenlet.kill()
 
+    def terminate(self):
+        if self.commit_greenlet is not None:
+            self.logger.info('Killing commit greenlet')
+            self.commit_greenlet = self.commit_greenlet.kill()
+        if self.consume_greenlet is not None:
+            self.logger.info('Killing consume greenlet')
+            self.consume_greenlet = self.consume_greenlet.kill()
+        if self.throughput_greenlet is not None:
+            self.logger.info('Killing throughput greenlet')
+            self.throughput_greenlet = self.throughput_greenlet.kill()
+        if self.consumer is not None:
+            self.logger.info('Stopping Kafka consumer')
+            self.consumer.stop()
+        super(Ranger, self).terminate()
+
 
 def main():
     parser = argparse.ArgumentParser()
