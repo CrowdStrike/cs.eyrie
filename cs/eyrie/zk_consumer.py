@@ -511,6 +511,24 @@ class ZKConsumer(object):
             self.logger.info('Restarting ZK partitioner')
             self.zk.handler.spawn(self.init_zkp)
 
+    def _zkp_wait(self):
+        while 1:
+            if self.zkp.failed:
+                raise Exception("Lost or unable to acquire partition")
+            elif self.zkp.release:
+                self.zkp.release_set()
+            elif self.zkp.acquired:
+                @self.zk.ChildrenWatch(self.zkp._group_path)
+                def group_change_proxy(consumer_ids):
+                    if self.zkp is None or self.zkp.failed:
+                        self.init_zkp()
+                    else:
+                        self.zkp.release_set()
+                        self._zkp_wait()
+                break
+            elif self.zkp.allocating:
+                self.zkp.wait_for_acquire()
+
     def init_zkp(self):
         if self.nodes:
             self.zkp = StaticZKPartitioner(
@@ -524,15 +542,7 @@ class ZKConsumer(object):
                 partitions_changed_cb=self.init_consumer,
                 logger=self.logger)
 
-        while 1:
-            if self.zkp.failed:
-                raise Exception("Lost or unable to acquire partition")
-            elif self.zkp.release:
-                self.zkp.release_set()
-            elif self.zkp.acquired:
-                break
-            elif self.zkp.allocating:
-                self.zkp.wait_for_acquire()
+        self._zkp_wait()
 
     def init_zk(self):
         # TODO: switch to async
