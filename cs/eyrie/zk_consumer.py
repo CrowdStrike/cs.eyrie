@@ -502,11 +502,14 @@ class ZKConsumer(object):
 
     def zk_session_watch(self, state):
         self.logger.debug('ZK transitioned to: %s', state)
-        if state == KazooState.SUSPENDED and \
-           self.consumer is not None:
-            self.logger.info('Stopping Kafka consumer')
-            self.consumer.stop()
-            self.consumer = None
+        if state == KazooState.SUSPENDED:
+            if self.consumer is not None:
+                self.logger.info('Stopping Kafka consumer')
+                self.consumer.stop()
+                self.consumer = None
+            # Lost connection to ZK; we can't call any methods that would
+            # try to contact it (i.e., we can't do self.zkp.finish() )
+            self.zkp = None
         elif state == KazooState.CONNECTED:
             self.logger.info('Restarting ZK partitioner')
             self.zk.handler.spawn(self.init_zkp)
@@ -526,6 +529,7 @@ class ZKConsumer(object):
                     else:
                         self.logger.info('ZK partitioner releasing set')
                         self.zkp.release_set()
+                        self.zkp.join_group()
                         self.logger.info('Waiting for ZK partitioner to settle')
                         self._zkp_wait()
                 self.logger.info('Partitioner aquired; setting child watch')
