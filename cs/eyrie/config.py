@@ -256,7 +256,7 @@ def script_main(script_class, cache_region, loop=None, start_loop=True):
                       context=vassal.context, loop=vassal.loop, async=True)
 
     def term_signal_handler(signal, frame):
-        vassal.logger.info("%s has stopped processing messages",
+        vassal.logger.info("%s has received terminate signal",
                            script_class.__name__)
         root = logging.getLogger()
         for handler in root.handlers:
