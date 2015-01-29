@@ -518,8 +518,7 @@ class ZKConsumer(object):
             elif self.zkp.release:
                 self.zkp.release_set()
             elif self.zkp.acquired:
-                @self.zk.ChildrenWatch(self.zkp._group_path)
-                def group_change_proxy(consumer_ids):
+                def group_change_proxy(event):
                     self.logger.warn('Connected consumers changed')
                     if self.zkp is None or self.zkp.failed:
                         self.logger.info('Restarting ZK partitioner')
@@ -529,6 +528,9 @@ class ZKConsumer(object):
                         self.zkp.release_set()
                         self.logger.info('Waiting for ZK partitioner to settle')
                         self._zkp_wait()
+                self.logger.info('Partitioner aquired; setting child watch')
+                self.zk.get_children_async(self.zkp._group_path,
+                                           group_change_proxy)
                 break
             elif self.zkp.allocating:
                 self.zkp.wait_for_acquire()
