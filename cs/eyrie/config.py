@@ -178,7 +178,7 @@ def configure_caching(cache_region, config_uri):
                          'cache_lookups', 'no_block', 'tcp_nodelay', 'cas',
                          'verify_keys', 'remove_failed', 'distributed_lock'):
                 bval = asbool(val)
-            elif 'time' in bname:
+            elif 'time' in bname or bname == '_noreply':
                 bval = int(val)
             else:
                 bval = val
