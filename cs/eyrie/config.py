@@ -186,7 +186,10 @@ def configure_caching(cache_region, config_uri):
         elif 'time' in key:
             parsed_dogpile_args[key] = int(val)
         elif key == 'url':
-            parsed_dogpile_args['url'] = val.split(',')
+            if dogpile_args['backend'] == 'dogpile.cache.redis':
+                parsed_dogpile_args['url'] = val
+            else:
+                parsed_dogpile_args['url'] = val.split(',')
         elif key == 'binary':
             parsed_dogpile_args['binary'] = asbool(val)
         elif key == 'min_compress_len':
