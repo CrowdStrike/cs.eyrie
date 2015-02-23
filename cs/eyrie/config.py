@@ -17,6 +17,7 @@ import logging
 from logging.config import dictConfig
 import multiprocessing
 import os
+import pickle
 import signal
 import sys
 import traceback
