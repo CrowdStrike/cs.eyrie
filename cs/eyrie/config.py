@@ -30,6 +30,12 @@ import six
 import zmq
 from zmq.eventloop import ioloop
 
+try:
+    from dogpile.cache.api import CacheBackend, NO_VALUE
+except ImportError:
+    CacheBackend = None
+    NO_VALUE = None
+
 
 LOGGING_PORT = 16385
 LOGGING_ENDPOINT = 'tcp://127.0.0.1:{}'.format(LOGGING_PORT)
@@ -282,3 +288,71 @@ def script_main(script_class, cache_region, loop=None, start_loop=True):
             print 'Terminating with unsent messages'
 
     return vassal
+
+
+class ShardedRedisBackend(CacheBackend):
+    """A backend to shard keys across a Redis cluster
+    """
+
+    def __init__(self, arguments):
+        self._imports()
+        self.distributed_lock = arguments.get('distributed_lock', False)
+        self.lock_timeout = arguments.get('lock_timeout', None)
+        self.lock_sleep = arguments.get('lock_sleep', 0.1)
+
+        self.cluster = ShardedRedis(
+            shards=[
+                host.split(':')
+                for host in arguments['url']
+            ],
+            duration=arguments.pop('redis_expiration_time', 0),
+            hashfn=arguments.pop('hashfn', None),
+            db=arguments.pop('db', 0),
+            password=arguments.pop('password', None),
+            socket_timeout=arguments.pop('socket_timeout', None),
+            charset=arguments.pop('charset', 'utf-8'),
+            errors=arguments.pop('errors', 'strict'),
+        )
+
+    def _imports(self):
+        # defer imports until backend is used
+        global ShardedRedis
+        from cs.eyrie.redis import ShardedRedis
+
+    def get_mutex(self, key):
+        if self.distributed_lock:
+            return self.cluster.lock('_lock{0}'.format(key),
+                                     timeout=self.lock_timeout,
+                                     sleep=self.lock_sleep)
+        else:
+            return None
+
+    def get(self, key):
+        value = self.cluster.get(key)
+        if value is None:
+            return NO_VALUE
+        return pickle.loads(value)
+
+    def get_multi(self, keys):
+        values = self.cluster.mget(keys)
+        return [
+            pickle.loads(v)
+            if v is not None else NO_VALUE
+            for v in values
+        ]
+
+    def set(self, key, value):
+        self.cluster.set(key, pickle.dumps(value, pickle.HIGHEST_PROTOCOL))
+
+    def set_multi(self, mapping):
+        mapping = dict(
+            (k, pickle.dumps(v, pickle.HIGHEST_PROTOCOL))
+            for k, v in mapping.items()
+        )
+        self.cluster.mset(mapping)
+
+    def delete(self, key):
+        self.cluster.delete(key)
+
+    def delete_multi(self, keys):
+        self.cluster.delete(*keys)
