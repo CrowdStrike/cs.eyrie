@@ -69,6 +69,7 @@ setup(
             'eyrie_injector = cs.eyrie.scripts.log_injector:main',
             'kafka_consumer = cs.eyrie.scripts.kafka_consumer:main [Kafka]',
             'kafka_router = cs.eyrie.scripts.kafka_router:main [Kafka]',
+        ],
         'dogpile.cache': [
             'sharded_redis = cs.eyrie.config:ShardedRedisBackend',
         ]
