@@ -532,9 +532,10 @@ class ZKConsumer(object):
                         self.zkp.join_group()
                         self.logger.info('Waiting for ZK partitioner to settle')
                         self._zkp_wait()
-                self.logger.info('Partitioner aquired; setting child watch')
-                self.zk.get_children_async(self.zkp._group_path,
-                                           group_change_proxy)
+                if not self.nodes:
+                    self.logger.info('Partitioner aquired; setting child watch')
+                    self.zk.get_children_async(self.zkp._group_path,
+                                               group_change_proxy)
                 break
             elif self.zkp.allocating:
                 self.zkp.wait_for_acquire()
