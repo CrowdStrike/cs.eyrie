@@ -39,12 +39,15 @@ class Ranger(object):
     commit_interval = 30
     fetch_count = 25
     max_buffer_size = 1024*1024
-    title = '(kafka:consumer)'
+    title = '(kafka:consumer:{})'
 
     def __init__(self, config_uri, app_name,
-                 zk_hosts=None, group=None, topic=None):
+                 zk_hosts=None, group=None, topic=None, title=None):
         self.config_uri = config_uri
         self.curr_proc = multiprocessing.current_process()
+        if title is None and topic is not None:
+            title = self.title.format(topic)
+        self.curr_proc.name = title
 
         setup_logging(self.config_uri)
         app_settings = get_appsettings(self.config_uri, name=app_name)
@@ -216,7 +219,8 @@ def main():
                     app_name=pargs.app_name,
                     zk_hosts=pargs.zk_hosts,
                     group=pargs.group,
-                    topic=pargs.topic)
+                    topic=pargs.topic,
+                    title=pargs.title)
     ranger()
 
 
