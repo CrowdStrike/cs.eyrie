@@ -529,7 +529,7 @@ class ZKConsumer(object):
                     else:
                         self.logger.info('ZK partitioner releasing set')
                         self.zkp.release_set()
-                        self.zkp.join_group()
+                        self.zk.handler.spawn(self.zkp.join_group)
                         self.logger.info('Waiting for ZK partitioner to settle')
                         self._zkp_wait()
                 if not self.nodes:
