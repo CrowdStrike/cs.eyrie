@@ -529,9 +529,8 @@ class ZKConsumer(object):
                     else:
                         self.logger.info('ZK partitioner releasing set')
                         self.zkp.release_set()
+                        self.logger.info('Re-joining group')
                         self.zk.handler.spawn(self.zkp.join_group)
-                        self.logger.info('Waiting for ZK partitioner to settle')
-                        self._zkp_wait()
                 if not self.nodes:
                     self.logger.info('Partitioner aquired; setting child watch')
                     result = self.zk.get_children_async(self.zkp._group_path)
