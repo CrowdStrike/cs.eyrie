@@ -201,7 +201,8 @@ class Vassal(object):
             output_cname = self.channels[cname].drained_by
             if output_cname:
                 buf_len = self.streams[output_cname]._send_queue.qsize()
-                if buf_len > self.channels[cname].hwm:
+                hwm = self.channels[cname].hwm
+                if buf_len >= (hwm - (hwm * 0.2)):
                     msg = "Pausing receive on: %s (Buffered: %d, HWM: %d)"
                     hwm = self.channels[cname].hwm
                     self.logger.info(msg, cname, buf_len, hwm)
