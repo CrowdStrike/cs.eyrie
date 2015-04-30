@@ -16,6 +16,7 @@ from functools import partial
 import logging
 import multiprocessing
 import os
+import sys
 from uuid import UUID
 
 try:
@@ -41,6 +42,9 @@ from zmq.eventloop.zmqstream import ZMQStream
 
 from cs.eyrie.config import SOCKET_TYPES
 from cs.eyrie.config import ZMQChannel
+
+
+csv.field_size_limit(sys.maxint)
 
 
 class Vassal(object):
