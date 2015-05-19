@@ -22,9 +22,11 @@ from uuid import UUID
 try:
     from sixfeetup.bowab.db import init_sa
     from psycopg2.extras import register_uuid
+    from psycopg2.extras import DictCursor
 except ImportError:
     init_sa = None
     register_uuid = None
+    DictCursor = None
 
 from pyramid.config import Configurator
 from pyramid.paster import get_appsettings
@@ -57,6 +59,7 @@ class Vassal(object):
     title = '(eyrie:vassal)'
     app_name = 'eyrie'
     args = None
+    cursor_factory = DictCursor
 
     def __init__(self, **kwargs):
         self.pks_seen = defaultdict(set)
@@ -111,7 +114,7 @@ class Vassal(object):
             self.db_conn.rollback()
             self.db_conn.set_session(autocommit=True)
 
-            self.cursor = self.db_conn.cursor()
+            self.cursor = self.db_conn.cursor(cursor_factory=self.cursor_factory)
             self.cursor.arraysize = 1024
 
     def init_streams(self):
