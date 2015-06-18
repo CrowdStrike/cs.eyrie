@@ -21,10 +21,12 @@ from uuid import UUID
 
 try:
     from sixfeetup.bowab.db import init_sa
+    from psycopg2 import Error
     from psycopg2.extras import register_uuid
     from psycopg2.extras import DictCursor
 except ImportError:
     init_sa = None
+    Error = None
     register_uuid = None
     DictCursor = None
 
@@ -214,6 +216,9 @@ class Vassal(object):
                     hwm = self.channels[cname].hwm
                     self.logger.info(msg, cname, buf_len, hwm)
                     stream.stop_on_recv()
+        except Error as err:
+            self.logger.exception(err)
+            self.init_db()
         except Exception as err:
             self.logger.exception(err)
 
