@@ -575,8 +575,10 @@ class ZKConsumer(object):
             self.broker_hosts.append('{}:{}'.format(b_data['host'],
                                                     b_data['port']))
 
+        my_partitions = []
         if self.consumer is not None:
             self.logger.warn('Brokers changed, stopping Kafka consumer.')
+            my_partitions = self.consumer.offsets.keys()
             self.consumer.stop()
             self.consumer = None
         if self.client is not None:
@@ -584,13 +586,19 @@ class ZKConsumer(object):
             self.client.close()
             self.client = None
 
+        if my_partitions:
+            msg = 'Brokers changed, queuing restart of Kafka client / consumer.'
+            self.logger.warn(msg)
+            self.zk.handler.spawn(self.init_consumer, my_partitions)
+
     def init_consumer(self, my_partitions):
         if self.consumer is None:
             self.logger.warn('Starting Kafka client')
             self.client = KafkaClient(self.broker_hosts,
                                       client_id=self.zkp._identifier)
         else:
-            if sorted(my_partitions) != sorted(self.consumer.offsets.keys()):
+            if self.consumer is None or \
+               sorted(my_partitions) != sorted(self.consumer.offsets.keys()):
                 self.logger.warn('Partitions changed, restarting Kafka consumer.')
                 self.consumer.stop()
             else:
