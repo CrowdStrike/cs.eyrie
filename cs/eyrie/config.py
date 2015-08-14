@@ -218,7 +218,10 @@ def info_signal_handler(signal, frame):
                  ''.join(traceback.format_stack(frame)))
 
 
-def script_main(script_class, cache_region, loop=None, start_loop=True):
+def script_main(script_class, cache_region, **script_kwargs):
+    loop = script_kwargs.pop('loop', None)
+    start_loop = script_kwargs.pop('start_loop', True)
+    blt_default = script_kwargs.pop('blocking_log_threshold', 5)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config',
@@ -231,7 +234,7 @@ def script_main(script_class, cache_region, loop=None, start_loop=True):
 
     blt = 'Logs a stack trace if the IOLoop is blocked for more than s seconds'
     parser.add_argument('--blocking-log-threshold',
-                        help=blt, default=5, type=int, metavar='s')
+                        help=blt, default=blt_default, type=int, metavar='s')
 
     if script_class.args is not None:
         for pa, kw in script_class.args:
