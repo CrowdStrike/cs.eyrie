@@ -82,14 +82,14 @@ class Vassal(object):
 
         self.config_uri = kwargs.pop('config')
 
-        self.init_streams()
+        if kwargs.get('init_streams', True):
+            self.init_streams()
 
         app_settings = get_appsettings(self.config_uri, name=self.app_name)
         self.config = Configurator(settings=app_settings)
         self.curr_proc.authkey = self.config.registry.settings['eyrie.authkey'].encode('utf8')
 
-        init_db = kwargs.get('init_db', False)
-        if init_db:
+        if kwargs.get('init_db', False):
             self.init_db()
 
     def set_ioloop(self, loop=None):
