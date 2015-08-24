@@ -31,7 +31,7 @@ To demonstrate, here is a series of examples to show the differences:
         msg = socket.recv()
 
 In this example, our program is limited to the single loop, and receiving
-more messages waits until we've processed each message
+more messages waits until we've processed each message.
 
 
 The following example uses the Poller object to allow consuming from
