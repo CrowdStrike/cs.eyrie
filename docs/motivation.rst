@@ -66,8 +66,8 @@ and it is much less clear what the developer was intending to do.
 
 
 The third example uses the Tornado IOLoop to abstract the details of
-the socket communication, but you still have a chunk of boilerplate code
-to setup the sockets in the first place:
+the socket communication, but you still have imperative code to setup
+the sockets in the first place:
 
 
 .. code-block:: python
@@ -97,7 +97,8 @@ to setup the sockets in the first place:
 
 
 The final example uses the abstractions provided by this package to make
-it clear exactly what ZMQ sockets are in play, but gets out of your way after that.
+it declaritively configure the ZMQ sockets you want, but gets out of your
+way after that.
 
 
 .. code-block:: python
