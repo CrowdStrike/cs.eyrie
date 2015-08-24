@@ -20,4 +20,5 @@ Primitives for building ZMQ pipelines.
 Features
 --------
 
-* TODO
+* Centralized logging daemon
+* Kafka to ZMQ initiator
