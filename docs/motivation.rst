@@ -91,7 +91,7 @@ the sockets in the first place:
 
     socket_sub = context.socket(zmq.SUB)
     socket_sub.connect ("tcp://localhost:9095")
-    socket_sub.setsockopt(zmq.SUBSCRIBE, "9")
+    socket_sub.setsockopt(zmq.SUBSCRIBE, "")
     stream_sub = zmqstream.ZMQStream(socket_sub)
     stream_sub.on_recv(process_message)
 
