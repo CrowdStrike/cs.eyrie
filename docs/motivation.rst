@@ -119,11 +119,11 @@ way after that.
             ),
         )
 
-    def onPull(self, msg):
-        print "Received exit command, client will stop receiving messages"
+        def onPull(self, msg):
+            print "Received exit command, client will stop receiving messages"
 
-    def onSub(self, msg):
-        print "Processing ... %s" % msg
+        def onSub(self, msg):
+            print "Processing ... %s" % msg
 
 
 Here you see that config is abstracted out of the program flow, and you only need
