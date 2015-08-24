@@ -5,7 +5,7 @@ Credits
 Development Lead
 ----------------
 
-* CrowdStrike, Inc. <csoc@crowdstrike.com>
+* CrowdStrike, Inc. <cid-labs@crowdstrike.com>
 
 Contributors
 ------------
