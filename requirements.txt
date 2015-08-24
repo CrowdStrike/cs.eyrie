@@ -1,2 +1,6 @@
 wheel==0.23.0
-cs.eyrie[Dogpile, Kafka]
+dogpile.cache
+kafka-python
+kazoo
+gevent
+hash_ring
