@@ -1,2 +1,2 @@
 wheel==0.23.0
-cs.eyrie[Dogpile, Kafka, PostgreSQL]
+cs.eyrie[Dogpile, Kafka]
