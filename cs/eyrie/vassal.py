@@ -170,6 +170,14 @@ class Vassal(object):
             stream.send_multipart = partial(stream.send_multipart, callback=cb)
 
     def terminate(self):
+        self.logger.info('%s is terminating', self.__class__.__name__)
+        while self.streams:
+            sname, stream = self.streams.popitem()
+            self.logger.debug('Flushing stream: %s', sname)
+            num_flushed = stream.flush()
+            if num_flushed:
+                self.logger.debug('Flushed %d messages', num_flushed)
+
         logging.shutdown()
         self.loop.stop()
 
