@@ -159,9 +159,9 @@ def setup_logging(config_uri, incremental=False, **kwargs):
     dictConfig(logging_config)
 
     if incremental:
-        logging.info('Logging re-configured.')
+        logging.debug('Logging re-configured.')
     else:
-        logging.info('Logging configured.')
+        logging.debug('Logging configured.')
 
 
 def configure_caching(cache_region, config_uri):
