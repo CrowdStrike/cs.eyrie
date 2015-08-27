@@ -40,7 +40,21 @@ import cs.eyrie
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.viewcode']
+extensions = [
+    'alabaster',
+    'sphinx.ext.autodoc',
+    'sphinx.ext.intersphinx',
+    'sphinx.ext.napoleon',
+    'sphinx.ext.viewcode',
+]
+
+# Lookups for objects in external projects
+intersphinx_mapping = {
+    'pyca': ('https://cryptography.io/en/latest/', None),
+    'python': ('https://docs.python.org/', None),
+    'zmq': ('https://zeromq.github.io/pyzmq/', None),
+    'tornado': ('http://www.tornadoweb.org/en/stable/', None),
+}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -55,7 +69,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'cs.eyrie'
+project = u'eyrie'
 copyright = u'2014, CrowdStrike, Inc.'
 
 # The version info for the project you're documenting, acts as replacement
@@ -111,7 +125,7 @@ pygments_style = 'sphinx'
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = 'default'
+html_theme = 'alabaster'
 
 # Theme options are theme-specific and customize the look and feel of a
 # theme further.  For a list of options available for each theme, see the
@@ -208,8 +222,8 @@ latex_elements = {
 # (source start file, target name, title, author, documentclass
 # [howto/manual]).
 latex_documents = [
-    ('index', 'cs.eyrie.tex',
-     u'cs.eyrie Documentation',
+    ('index', 'eyrie.tex',
+     u'eyrie Documentation',
      u'CrowdStrike, Inc.', 'manual'),
 ]
 
@@ -239,8 +253,8 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'cs.eyrie',
-     u'cs.eyrie Documentation',
+    ('index', 'eyrie',
+     u'eyrie Documentation',
      [u'CrowdStrike, Inc.'], 1)
 ]
 
@@ -254,10 +268,10 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    ('index', 'cs.eyrie',
-     u'cs.eyrie Documentation',
+    ('index', 'eyrie',
+     u'eyrie Documentation',
      u'CrowdStrike, Inc.',
-     'cs.eyrie',
+     'eyrie',
      'One line description of project.',
      'Miscellaneous'),
 ]
