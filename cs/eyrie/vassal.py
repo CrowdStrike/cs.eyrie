@@ -171,8 +171,7 @@ class Vassal(object):
 
     def terminate(self):
         self.logger.info('%s is terminating', self.__class__.__name__)
-        while self.streams:
-            sname, stream = self.streams.popitem()
+        for sname, stream in self.streams.items():
             self.logger.debug('Flushing stream: %s', sname)
             num_flushed = stream.flush()
             if num_flushed:
