@@ -1,5 +1,5 @@
 ===============================
-cs.eyrie
+Eyrie
 ===============================
 
 .. image:: https://badge.fury.io/py/cs.eyrie.png
@@ -12,10 +12,10 @@ cs.eyrie
         :target: https://pypi.python.org/pypi/cs.eyrie
 
 
-Primitives for building ZMQ pipelines.
+Primitives for building ZMQ unprotocols.
 
 * Free software: BSD license
-* Documentation: http://cs.eyrie.readthedocs.org.
+* Documentation: http://eyrie.readthedocs.org.
 
 Features
 --------
