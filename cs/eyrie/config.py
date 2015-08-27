@@ -64,7 +64,7 @@ ZMQChannel = namedtuple(
 ZMQChannel.__new__ = partial(
     ZMQChannel.__new__,
     bind=False,
-    subscription=['*', str(os.getpid())],
+    subscription=('*', str(os.getpid())),
     recv_handler=None,
     # This value is additive to the ZMQ socket HWM
     hwm=1000,
