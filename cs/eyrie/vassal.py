@@ -7,10 +7,7 @@ try:
     from cStringIO import StringIO
 except ImportError:
     from io import StringIO
-from collections import Counter
-from collections import OrderedDict
-from collections import defaultdict
-from collections import deque
+from collections import Counter, OrderedDict, defaultdict, deque
 from datetime import timedelta
 from functools import partial
 import logging
