@@ -230,7 +230,7 @@ def script_main(script_class, cache_region, **script_kwargs):
 
     parser.add_argument('-t', '--title',
                         help='Set the running process title',
-                        default=script_class.title)
+                        default=script_kwargs.get('title', script_class.title))
 
     blt = 'Logs a stack trace if the IOLoop is blocked for more than s seconds'
     parser.add_argument('--blocking-log-threshold',
@@ -243,6 +243,8 @@ def script_main(script_class, cache_region, **script_kwargs):
     pargs = parser.parse_args()
 
     if pargs.title is not None:
+        curr_proc = multiprocessing.current_process()
+        curr_proc.name = pargs.title
         setproctitle(pargs.title)
 
     # TODO: add signal handlers to drop caches

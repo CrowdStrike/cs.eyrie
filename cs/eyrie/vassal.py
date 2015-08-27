@@ -65,9 +65,7 @@ class Vassal(object):
 
     def __init__(self, **kwargs):
         self.pks_seen = defaultdict(set)
-        title = kwargs.pop('title', self.title)
         self.curr_proc = multiprocessing.current_process()
-        self.curr_proc.name = title
 
         lname = '.'.join([self.__class__.__module__,
                           self.__class__.__name__])
