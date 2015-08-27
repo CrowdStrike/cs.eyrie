@@ -68,10 +68,7 @@ class Vassal(object):
                           self.__class__.__name__])
         self.logger = logging.getLogger(lname)
 
-        self.context = kwargs.get('context')
-        if self.context is None:
-            self.context = zmq.Context()
-        kwargs['context'] = self.context
+        self.context = kwargs.get('context', zmq.Context())
         loop = kwargs.pop('loop', None)
         self.set_ioloop(loop)
 
