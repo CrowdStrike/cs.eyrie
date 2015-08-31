@@ -283,7 +283,8 @@ def script_main(script_class, cache_region, **script_kwargs):
     signal.signal(signal.SIGINT, term_signal_handler)
     signal.signal(signal.SIGTERM, term_signal_handler)
 
-    vassal.loop.set_blocking_log_threshold(pargs.blocking_log_threshold)
+    if pargs.blocking_log_threshold > 0:
+        vassal.loop.set_blocking_log_threshold(pargs.blocking_log_threshold)
     vassal.loop.add_callback(vassal.logger.info,
                              "%s has begun processing messages",
                              script_class.__name__)
