@@ -22,6 +22,7 @@ import signal
 import sys
 import traceback
 
+from pyramid.path import DottedNameResolver
 from pyramid.settings import asbool
 
 from setproctitle import setproctitle
@@ -33,9 +34,11 @@ from zmq.eventloop import ioloop
 
 try:
     from dogpile.cache.api import CacheBackend, NO_VALUE
+    from dogpile.cache.backends.memcached import GenericMemcachedBackend
 except ImportError:
     CacheBackend = None
     NO_VALUE = None
+    GenericMemcachedBackend = None
 
 
 LOGGING_PORT = 16385
@@ -363,3 +366,53 @@ class ShardedRedisBackend(CacheBackend):
 
     def delete_multi(self, keys):
         self.cluster.delete(*keys)
+
+
+class PyMemcacheBackend(GenericMemcachedBackend):
+    """A memcached backend using pymemcache
+    """
+
+    def __init__(self, arguments):
+        self.client_kwargs = {}
+
+        resolver = DottedNameResolver()
+        defaults = dict(
+            # Default to behave like pylibmc/python-memcache
+            serializer='pymemcache.serde.python_memcache_serializer',
+            deserializer='pymemcache.serde.python_memcache_deserializer',
+        )
+        options = {
+            'import': ('hasher', 'serializer', 'deserializer', 'socket_module',
+                       'lock_generator'),
+            'bool': ('use_pooling', 'ignore_exc', 'no_delay'),
+            'int': ('connect_timeout', 'timeout', 'max_pool_size',
+                    'retry_attempts', 'retry_timeout', 'dead_timeout'),
+            'str': ('key_prefix',),
+        }
+        for otype, onames in options.items():
+            for oname in onames:
+                oval = arguments.get(oname, defaults.get(oname))
+                if oval is None:
+                    continue
+                if otype == 'import':
+                    self.client_kwargs[oname] = resolver.maybe_resolve(oval)
+                elif otype == 'bool':
+                    self.client_kwargs[oname] = asbool(oval)
+                elif otype == 'int':
+                    self.client_kwargs[oname] = int(oval)
+                else:
+                    self.client_kwargs[oname] = oval
+
+        super(PyMemcacheBackend, self).__init__(arguments)
+        servers = []
+        for server in self.url:
+            s_url = server.split(':')
+            servers.append((s_url[0], int(s_url[1])))
+        self.client_kwargs['servers'] = servers
+
+    def _imports(self):
+        global HashClient
+        from pymemcache.client.hash import HashClient
+
+    def _create_client(self):
+        return HashClient(**self.client_kwargs)

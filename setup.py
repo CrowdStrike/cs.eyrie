@@ -71,7 +71,8 @@ setup(
             'kafka_router = cs.eyrie.scripts.kafka_router:main [Kafka]',
         ],
         'dogpile.cache': [
-            'sharded_redis = cs.eyrie.config:ShardedRedisBackend',
+            'cs.eyrie.sharded_redis = cs.eyrie.config:ShardedRedisBackend',
+            'cs.eyrie.pymemcache = cs.eyrie.config:PyMemcacheBackend',
         ]
     },
 )
