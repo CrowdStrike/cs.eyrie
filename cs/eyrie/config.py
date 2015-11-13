@@ -46,7 +46,7 @@ LOGGING_ENDPOINT = 'tcp://127.0.0.1:{}'.format(LOGGING_PORT)
 ROUTER_OUTBOUND = 'ipc:///tmp/kafka_consume.ipc'
 ROUTER_MONITOR = 'ipc:///tmp/kafka_monitor.ipc'
 
-
+#: Mapping libzmq constant to string name
 SOCKET_TYPES = {
     zmq.REQ: 'REQ',
     zmq.REP: 'REP',
@@ -59,13 +59,13 @@ SOCKET_TYPES = {
     zmq.PULL: 'PULL',
 }
 
-ZMQChannel = namedtuple(
+ZMQChannel_ = namedtuple(
     'ZMQChannel',
     ['endpoint', 'socket_type', 'bind', 'subscription',
      'recv_handler', 'hwm', 'drained_by', 'drains'],
 )
-ZMQChannel.__new__ = partial(
-    ZMQChannel.__new__,
+ZMQChannel_.__new__ = partial(
+    ZMQChannel_.__new__,
     bind=False,
     subscription=('*', str(os.getpid())),
     recv_handler=None,
@@ -76,6 +76,23 @@ ZMQChannel.__new__ = partial(
     # This must be set on the next pipeline stage after drained_by
     drains=None,
 )
+class ZMQChannel(ZMQChannel_):
+    """Declarative config for a ZMQ channel
+
+    This namedtuple configures a ZMQ socket for use by a Vassal
+
+    Keyword Arguments
+        endpoint (str): URI for ZMQ to bind/connect
+        socket_type (int): Type of ZMQ socket to create (see :py:const:`cs.eyrie.config.SOCKET_TYPES`)
+        bind (bool): True to bind, False to connect (default False)
+        subscription (tuple): Sequence of subscription filters to apply
+        recv_handler (str or callable): Name or callable to used when a message is received
+
+        hwm (int): High water mark before shutting off input
+        drained_by (str): Name of channel that drains this socket's input data
+        drains (str): Name of channel that this channel drains
+    """
+
 
 
 ZMQLogMessage = namedtuple(

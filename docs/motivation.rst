@@ -128,3 +128,4 @@ way after that.
 
 Here you see that config is abstracted out of the program flow, and you only need
 to implement the event handlers that are called for each channel definition.
+For a complete example, see _`Usage`
