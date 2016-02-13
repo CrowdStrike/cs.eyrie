@@ -3,4 +3,3 @@ dogpile.cache
 kafka-python
 kazoo
 gevent
-hash_ring
