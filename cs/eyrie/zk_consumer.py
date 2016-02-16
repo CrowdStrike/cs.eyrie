@@ -289,7 +289,7 @@ class ZKPartitioner(object):
         self._acquire_event.clear()
 
         my_partitions = self.consumer_partitions[self._identifier]
-        nodes = list(self._group)
+        nodes = sorted(self.consumer_partitions)
         my_old_partitions = [
             partition
             for partition in self._set
@@ -379,7 +379,7 @@ class ZKPartitioner(object):
         # the joining node(s)
         self._release_locks()
 
-        nodes = list(self._group)
+        nodes = sorted(self.consumer_partitions)
         my_new_partitions = [
             partition
             for partition in partition_ids
