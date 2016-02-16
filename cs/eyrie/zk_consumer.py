@@ -383,7 +383,7 @@ class ZKPartitioner(object):
         my_new_partitions = [
             partition
             for partition in partition_ids
-            if nodes[int(partition) % len(nodes)] != self._identifier and
+            if nodes[int(partition) % len(nodes)] == self._identifier and
                int(partition) not in my_partitions
         ]
         self.logger.info('My new partitions (%d): %s', len(my_new_partitions), my_new_partitions)
