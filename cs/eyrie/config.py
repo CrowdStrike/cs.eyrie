@@ -25,8 +25,6 @@ import traceback
 from pyramid.path import DottedNameResolver
 from pyramid.settings import asbool
 
-from setproctitle import setproctitle
-
 import six
 
 import zmq
@@ -248,7 +246,9 @@ def script_main(script_class, cache_region, **script_kwargs):
     if pargs.title is not None:
         curr_proc = multiprocessing.current_process()
         curr_proc.name = pargs.title
-        setproctitle(pargs.title)
+        if '__pypy__' not in sys.builtin_module_names:
+            from setproctitle import setproctitle
+            setproctitle(pargs.title)
 
     # TODO: add signal handlers to drop caches
     signal.signal(signal.SIGUSR1, info_signal_handler)

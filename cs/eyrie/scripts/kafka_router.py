@@ -3,8 +3,7 @@
 # See the file LICENSE in the main directory for details
 import argparse
 import logging
-
-from setproctitle import setproctitle
+import sys
 
 import zmq
 from zmq.devices import ThreadProxy
@@ -32,7 +31,9 @@ def main(inbound=Ranger.output.endpoint,
     pargs = parser.parse_args()
 
     if pargs.title is not None:
-        setproctitle(pargs.title)
+        if '__pypy__' not in sys.builtin_module_names:
+            from setproctitle import setproctitle
+            setproctitle(pargs.title)
 
     setup_logging(pargs.config)
 

@@ -6,6 +6,7 @@ import argparse
 import logging
 import multiprocessing
 import random
+import sys
 import time
 
 import gevent
@@ -19,8 +20,6 @@ from pyramid.config import Configurator
 from pyramid.exceptions import ConfigurationError
 from pyramid.paster import get_appsettings
 from pyramid.config import aslist
-
-from setproctitle import setproctitle
 
 import zmq.green as zmq
 
@@ -213,7 +212,9 @@ def main():
     pargs = parser.parse_args()
 
     if pargs.title is not None:
-        setproctitle(pargs.title)
+        if '__pypy__' not in sys.builtin_module_names:
+            from setproctitle import setproctitle
+            setproctitle(pargs.title)
 
     ranger = Ranger(config_uri=pargs.config,
                     app_name=pargs.app_name,
