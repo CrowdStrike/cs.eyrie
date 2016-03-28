@@ -233,6 +233,11 @@ def script_main(script_class, cache_region, **script_kwargs):
                         help='Set the running process title',
                         default=script_kwargs.get('title', script_class.title))
 
+    parser.add_argument('-l', '--log-handler',
+                        help=("Specify which log handler to use. "
+                              "These are defined in the config file for each "
+                              "script."))
+
     blt = 'Logs a stack trace if the IOLoop is blocked for more than s seconds'
     parser.add_argument('--blocking-log-threshold',
                         help=blt, default=blt_default, type=int, metavar='s')
