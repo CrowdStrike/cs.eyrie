@@ -57,13 +57,7 @@ class Vassal(object):
     }
     title = '(eyrie:vassal)'
     app_name = 'eyrie'
-    args = [
-        (
-            ('-l', '--log-handler'),
-            {"help": ("Specify which log handler to use. "
-                      "These are defined in eyrie_api.ini.")}
-        )
-    ]
+    args = None
     cursor_factory = DictCursor
 
     def __init__(self, **kwargs):
