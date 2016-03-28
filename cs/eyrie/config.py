@@ -235,7 +235,8 @@ def script_main(script_class, cache_region, **script_kwargs):
 
     parser.add_argument('-l', '--log-handler',
                         help=("Specify which log handler to use. "
-                              "These are defined in eyrie_api.ini."))
+                              "These are defined in the config file for each "
+                              "script."))
 
     blt = 'Logs a stack trace if the IOLoop is blocked for more than s seconds'
     parser.add_argument('--blocking-log-threshold',
