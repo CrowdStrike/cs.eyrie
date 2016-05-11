@@ -219,7 +219,7 @@ def info_signal_handler(signal, frame):
                  ''.join(traceback.format_stack(frame)))
 
 
-def script_main(script_class, cache_region, **script_kwargs):
+def script_main(script_class, cache_region, _setup_logging=True, **script_kwargs):
     loop = script_kwargs.pop('loop', None)
     start_loop = script_kwargs.pop('start_loop', True)
     blt_default = script_kwargs.pop('blocking_log_threshold', 5)
@@ -271,7 +271,8 @@ def script_main(script_class, cache_region, **script_kwargs):
     if cache_region is not None:
         configure_caching(cache_region, pargs.config)
 
-    setup_logging(pargs.config, **kwargs)
+    if _setup_logging:
+        setup_logging(pargs.config, **kwargs)
     vassal = script_class(**kwargs)
 
     def hup_signal_handler(signal, frame):

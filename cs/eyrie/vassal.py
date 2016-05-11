@@ -70,8 +70,8 @@ class Vassal(object):
         # command line to override this default.
         logger_name = '.'.join([self.__class__.__module__,
                                 self.__class__.__name__])
-        log_handler = kwargs.get('log-handler') or logger_name
-        self.logger = logging.getLogger(log_handler)
+        log_handler = kwargs.get('log_handler') or logger_name
+        self.logger = self.get_logger(log_handler)
 
         self.context = kwargs.get('context', zmq.Context())
         loop = kwargs.pop('loop', None)
@@ -88,6 +88,12 @@ class Vassal(object):
 
         if kwargs.get('init_db', False):
             self.init_db()
+
+    def get_logger(self, logger_name=None):
+        if logger_name is None:
+            logger_name = '.'.join([self.__class__.__module__,
+                                    self.__class__.__name__])
+        return logging.getLogger(logger_name)
 
     def set_ioloop(self, loop=None):
         if loop is None:
