@@ -64,9 +64,14 @@ class Vassal(object):
         self.pks_seen = defaultdict(set)
         self.curr_proc = multiprocessing.current_process()
 
-        lname = '.'.join([self.__class__.__module__,
-                          self.__class__.__name__])
-        self.logger = logging.getLogger(lname)
+        # Set up logging. By default, instances of this class will use a
+        # logger with a name derived from the class & module names.
+        # Optionally, the -l/--log-handler argument can be provided on the
+        # command line to override this default.
+        logger_name = '.'.join([self.__class__.__module__,
+                                self.__class__.__name__])
+        log_handler = kwargs.get('log-handler') or logger_name
+        self.logger = logging.getLogger(log_handler)
 
         self.context = kwargs.get('context', zmq.Context())
         loop = kwargs.pop('loop', None)

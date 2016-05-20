@@ -25,8 +25,6 @@ import traceback
 from pyramid.path import DottedNameResolver
 from pyramid.settings import asbool
 
-from setproctitle import setproctitle
-
 import six
 
 import zmq
@@ -235,6 +233,11 @@ def script_main(script_class, cache_region, **script_kwargs):
                         help='Set the running process title',
                         default=script_kwargs.get('title', script_class.title))
 
+    parser.add_argument('-l', '--log-handler',
+                        help=("Specify which log handler to use. "
+                              "These are defined in the config file for each "
+                              "script."))
+
     blt = 'Logs a stack trace if the IOLoop is blocked for more than s seconds'
     parser.add_argument('--blocking-log-threshold',
                         help=blt, default=blt_default, type=int, metavar='s')
@@ -248,7 +251,9 @@ def script_main(script_class, cache_region, **script_kwargs):
     if pargs.title is not None:
         curr_proc = multiprocessing.current_process()
         curr_proc.name = pargs.title
-        setproctitle(pargs.title)
+        if '__pypy__' not in sys.builtin_module_names:
+            from setproctitle import setproctitle
+            setproctitle(pargs.title)
 
     # TODO: add signal handlers to drop caches
     signal.signal(signal.SIGUSR1, info_signal_handler)
