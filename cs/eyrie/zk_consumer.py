@@ -379,7 +379,7 @@ class ZKPartitioner(object):
         # the joining node(s)
         self._release_locks()
 
-        nodes = sorted([node for node in self._group])
+        nodes = sorted([node for node in self._group], key=lambda x: hash(x))
         my_new_partitions = [
             partition
             for partition in partition_ids
