@@ -33,7 +33,7 @@ test_requirements = [
 
 setup(
     name='cs.eyrie',
-    version='0.2.1',
+    version='0.3.0',
     description='Primitives for building ZMQ pipelines.',
     long_description=readme + '\n\n' + history,
     author='CrowdStrike, Inc.',
@@ -45,7 +45,7 @@ setup(
     install_requires=requirements,
     extras_require={
         'Dogpile':  ["dogpile.cache"],
-        'Kafka':  ["kafka-python", "kazoo", "gevent", "hash_ring"],
+        'Kafka':  ["kafka-python", "kazoo", "gevent"],
         'PostgreSQL':  ["sixfeetup.bowab", "zope.sqlalchemy"],
     },
     license="BSD",

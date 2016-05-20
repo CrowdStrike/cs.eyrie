@@ -11,8 +11,6 @@ import socket
 import time
 
 try:
-    from hash_ring import HashRing
-
     from kafka.client import KafkaClient
     from kafka.common import FailedPayloadsError
     from kafka.consumer import SimpleConsumer
@@ -27,7 +25,6 @@ try:
     from kazoo.recipe.watchers import PatientChildrenWatch
     from kazoo.recipe.partitioner import PartitionState
 except ImportError:
-    HashRing = None
     KafkaClient = None
     FailedPayloadsError = None
     SimpleConsumer = None
@@ -152,7 +149,6 @@ class ZKPartitioner(object):
 
         self._acquire_event = client.handler.event_object()
 
-        self.consumer_ring = None
         self.join_group()
 
         self._was_allocated = False
@@ -276,7 +272,6 @@ class ZKPartitioner(object):
         async_result.rawlink(updated)
 
         # Proceed to acquire locks for the working set as needed
-        self.consumer_ring = HashRing(list(self._group))
         self.rebalance(self._set)
 
         # All locks acquired! Time for state transition, make sure
@@ -294,10 +289,11 @@ class ZKPartitioner(object):
         self._acquire_event.clear()
 
         my_partitions = self.consumer_partitions[self._identifier]
+        nodes = sorted([node for node in self._group], key=lambda x: hash(x))
         my_old_partitions = [
             partition
             for partition in self._set
-            if self.consumer_ring.get_node(partition) != self._identifier and
+            if nodes[int(partition) % len(nodes)] != self._identifier and
                 int(partition) in my_partitions
         ]
         self.logger.debug('Release locks: my old partitions: %r', my_old_partitions)
@@ -373,7 +369,6 @@ class ZKPartitioner(object):
                 str(p_id)
                 for p_id in self.consumer_partitions[self._identifier]
             ]
-        #self.consumer_ring = HashRing(list(self._group))
         kr = KazooRetry(max_tries=3)
         kr.retry_exceptions = kr.retry_exceptions + tuple([NodeExistsError])
 
@@ -384,15 +379,16 @@ class ZKPartitioner(object):
         # the joining node(s)
         self._release_locks()
 
+        nodes = sorted([node for node in self._group], key=lambda x: hash(x))
         my_new_partitions = [
             partition
             for partition in partition_ids
-            if self.consumer_ring.get_node(partition) == self._identifier and \
+            if nodes[int(partition) % len(nodes)] == self._identifier and
                int(partition) not in my_partitions
         ]
         self.logger.info('My new partitions (%d): %s', len(my_new_partitions), my_new_partitions)
         for partition in my_new_partitions:
-            c_id = self.consumer_ring.get_node(partition)
+            c_id = nodes[int(partition) % len(nodes)]
             self.consumer_partitions[c_id].append(int(partition))
             p_path = self.path_formats['owner'].format(group=self.group,
                                                        topic=self.topic,
