@@ -289,7 +289,7 @@ class ZKPartitioner(object):
         self._acquire_event.clear()
 
         my_partitions = self.consumer_partitions[self._identifier]
-        nodes = sorted([node for node in self._group])
+        nodes = sorted([node for node in self._group], key=lambda x: hash(x))
         my_old_partitions = [
             partition
             for partition in self._set
