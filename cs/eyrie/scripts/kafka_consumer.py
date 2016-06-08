@@ -23,8 +23,7 @@ from pyramid.config import aslist
 
 import zmq.green as zmq
 
-from cs.eyrie.config import setup_logging
-from cs.eyrie.config import ZMQChannel
+from cs.eyrie.config import ZMQChannel, setup_logging
 from cs.eyrie.zk_consumer import ZKConsumer
 
 
@@ -41,7 +40,8 @@ class Ranger(object):
     title = '(kafka:consumer:{})'
 
     def __init__(self, config_uri, app_name,
-                 zk_hosts=None, group=None, topic=None, title=None):
+                 zk_hosts=None, group=None, topic=None, title=None,
+                 sample=False):
         self.config_uri = config_uri
         self.curr_proc = multiprocessing.current_process()
         if title is None and topic is not None:
@@ -51,12 +51,13 @@ class Ranger(object):
         setup_logging(self.config_uri)
         app_settings = get_appsettings(self.config_uri, name=app_name)
         self.config = Configurator(settings=app_settings)
-        self.curr_proc.authkey = self.config.registry.settings['eyrie.authkey']
+        settings = self.config.registry.settings
+        self.curr_proc.authkey = settings['eyrie.authkey']
+
 
         self.msg_count = 0
         self.logger = logging.getLogger('rf.kafka')
 
-        settings = self.config.registry.settings
         self.commit_interval = int(settings.get('kafka.commit_interval',
                                                 self.commit_interval))
         self.commit_greenlet = None
@@ -67,7 +68,7 @@ class Ranger(object):
 
         zk_hosts = settings.get('kafka.zk_hosts', zk_hosts)
         if zk_hosts is None:
-            raise ConfigurationError('No ZooKepper hosts provided')
+            raise ConfigurationError('No ZooKeeper hosts provided')
         group = settings.get('kafka.group', group)
         if group is None:
             raise ConfigurationError('No consumer group provided to join')
@@ -94,7 +95,7 @@ class Ranger(object):
         self.consumer.zk.add_listener(self.zk_session_watch)
 
         self.context = zmq.Context()
-        self.channel = self.context.socket(self.output.socket_type)
+        self.channel = self.context.socket(zmq.PUB if sample else zmq.PUSH)
         self.channel.connect(self.output.endpoint)
         self.lastSample = time.time()
 
@@ -209,6 +210,12 @@ def main():
     parser.add_argument('--title',
                         help='Set the running process title',
                         default=Ranger.title)
+    parser.add_argument('--sample',
+                        action='store_const',
+                        help="Activate sampling mode. NOTE: must be coupled with --sample in kafka_router",
+                        required=False,
+                        default=False,
+                        const=True)
     pargs = parser.parse_args()
 
     if pargs.title is not None:
@@ -218,6 +225,7 @@ def main():
 
     ranger = Ranger(config_uri=pargs.config,
                     app_name=pargs.app_name,
+                    sample=pargs.sample,
                     zk_hosts=pargs.zk_hosts,
                     group=pargs.group,
                     topic=pargs.topic,

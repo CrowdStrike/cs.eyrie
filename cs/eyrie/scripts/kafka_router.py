@@ -28,6 +28,12 @@ def main(inbound=Ranger.output.endpoint,
     parser.add_argument('--monitor-socket',
                         help='Path to socket for monitoring',
                         default=monitor)
+    parser.add_argument('--sample',
+                        action='store_const',
+                        help="Activate sampling mode. NOTE: must be coupled with --sample in kafka_consumer",
+                        required=False,
+                        default=False,
+                        const=True)
     pargs = parser.parse_args()
 
     if pargs.title is not None:
@@ -40,7 +46,12 @@ def main(inbound=Ranger.output.endpoint,
     logger = logging.getLogger('eyrie.kafka_router')
     logger.info('Starting Kafka feed router')
 
-    tp = ThreadProxy(zmq.PULL, zmq.PUSH, zmq.PUB)
+    tp = ThreadProxy(zmq.SUB if pargs.sample else zmq.PULL,
+                     zmq.PUSH, zmq.PUB)
+
+    if pargs.sample:
+        tp.setsockopt_in(zmq.SUBSCRIBE, '')
+
     tp.bind_in(inbound)
     tp.bind_out(pargs.consumer_socket)
     tp.bind_mon(pargs.monitor_socket)
