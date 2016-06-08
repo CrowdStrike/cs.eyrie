@@ -50,12 +50,13 @@ class Ranger(object):
         setup_logging(self.config_uri)
         app_settings = get_appsettings(self.config_uri, name=app_name)
         self.config = Configurator(settings=app_settings)
-        self.curr_proc.authkey = self.config.registry.settings['eyrie.authkey']
+        settings = self.config.registry.settings
+        self.curr_proc.authkey = settings['eyrie.authkey']
+
 
         self.msg_count = 0
         self.logger = logging.getLogger('rf.kafka')
 
-        settings = self.config.registry.settings
         self.commit_interval = int(settings.get('kafka.commit_interval',
                                                 self.commit_interval))
         self.commit_greenlet = None
