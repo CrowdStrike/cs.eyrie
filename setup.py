@@ -33,7 +33,7 @@ test_requirements = [
 
 setup(
     name='cs.eyrie',
-    version='0.3.0',
+    version='0.4.0',
     description='Primitives for building ZMQ pipelines.',
     long_description=readme + '\n\n' + history,
     author='CrowdStrike, Inc.',
