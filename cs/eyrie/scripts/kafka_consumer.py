@@ -40,7 +40,8 @@ class Ranger(object):
     title = '(kafka:consumer:{})'
 
     def __init__(self, config_uri, app_name,
-                 zk_hosts=None, group=None, topic=None, title=None):
+                 zk_hosts=None, group=None, topic=None, title=None,
+                 sample=False):
         self.config_uri = config_uri
         self.curr_proc = multiprocessing.current_process()
         if title is None and topic is not None:
@@ -94,7 +95,7 @@ class Ranger(object):
         self.consumer.zk.add_listener(self.zk_session_watch)
 
         self.context = zmq.Context()
-        self.channel = self.context.socket(self.output.socket_type)
+        self.channel = self.context.socket(zmq.PUB if sample else zmq.PUSH)
         self.channel.connect(self.output.endpoint)
         self.lastSample = time.time()
 
@@ -209,6 +210,12 @@ def main():
     parser.add_argument('--title',
                         help='Set the running process title',
                         default=Ranger.title)
+    parser.add_argument('--sample',
+                        action='store_const',
+                        help="Activate sampling mode. NOTE: must be coupled with --sample in kafka_router",
+                        required=False,
+                        default=False,
+                        const=True)
     pargs = parser.parse_args()
 
     if pargs.title is not None:
@@ -218,6 +225,7 @@ def main():
 
     ranger = Ranger(config_uri=pargs.config,
                     app_name=pargs.app_name,
+                    sample=pargs.sample,
                     zk_hosts=pargs.zk_hosts,
                     group=pargs.group,
                     topic=pargs.topic,
