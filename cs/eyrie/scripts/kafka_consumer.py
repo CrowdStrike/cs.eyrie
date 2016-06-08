@@ -67,7 +67,7 @@ class Ranger(object):
 
         zk_hosts = settings.get('kafka.zk_hosts', zk_hosts)
         if zk_hosts is None:
-            raise ConfigurationError('No ZooKepper hosts provided')
+            raise ConfigurationError('No ZooKeeper hosts provided')
         group = settings.get('kafka.group', group)
         if group is None:
             raise ConfigurationError('No consumer group provided to join')
