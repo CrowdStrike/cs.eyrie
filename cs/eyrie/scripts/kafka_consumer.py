@@ -23,8 +23,7 @@ from pyramid.config import aslist
 
 import zmq.green as zmq
 
-from cs.eyrie.config import setup_logging
-from cs.eyrie.config import ZMQChannel
+from cs.eyrie.config import ZMQChannel, setup_logging
 from cs.eyrie.zk_consumer import ZKConsumer
 
 
