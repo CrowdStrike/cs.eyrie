@@ -7,6 +7,7 @@ from functools import partial
 import json
 import logging
 import os
+import random
 import socket
 import time
 
@@ -363,6 +364,19 @@ class ZKPartitioner(object):
             self._client.handler.spawn(self._fail_out)
             return True
 
+    def new_partitions(self, nodes, my_partitions, partition_ids):
+        random.seed(':'.join(nodes))
+        num_nodes = len(nodes)
+        copy_partition_ids = list(partition_ids)
+        random.shuffle(copy_partition_ids)
+        random.seed()
+        return [
+            partition_id
+            for i, partition_id in enumerate(copy_partition_ids)
+            if nodes[i % num_nodes] == self._identifier \
+                and partition_id not in my_partitions
+        ]
+
     def rebalance(self, partition_ids=None):
         if partition_ids is None:
             partition_ids = [
@@ -380,12 +394,8 @@ class ZKPartitioner(object):
         self._release_locks()
 
         nodes = sorted([node for node in self._group], key=lambda x: hash(x))
-        my_new_partitions = [
-            partition
-            for partition in partition_ids
-            if nodes[int(partition) % len(nodes)] == self._identifier and
-               int(partition) not in my_partitions
-        ]
+        my_new_partitions = self.new_partitions(nodes, my_partitions,
+                                                partition_ids)
         self.logger.info('My new partitions (%d): %s', len(my_new_partitions), my_new_partitions)
         for partition in my_new_partitions:
             c_id = nodes[int(partition) % len(nodes)]
