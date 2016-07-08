@@ -291,14 +291,12 @@ class ZKPartitioner(object):
 
         my_partitions = self.consumer_partitions[self._identifier]
         nodes = sorted([node for node in self._group], key=lambda x: hash(x))
-        my_old_partitions = [
-            partition
-            for partition in self._set
-            if nodes[int(partition) % len(nodes)] != self._identifier and
-                int(partition) in my_partitions
-        ]
-        self.logger.debug('Release locks: my old partitions: %r', my_old_partitions)
-        for partition in my_old_partitions:
+        partitions = set(self._set)
+        partitions_should_not = set(partitions - self.assigned_partitions(nodes, partitions))
+        will_release_partitions = set(my_partitions) - partitions_should_not
+
+        self.logger.debug('Release locks: my old partitions: %r', will_release_partitions)
+        for partition in will_release_partitions:
             self.logger.info('Releasing ownership of partition %s',
                              partition)
             p_path = self.path_formats['owner'].format(group=self.group,
@@ -364,18 +362,17 @@ class ZKPartitioner(object):
             self._client.handler.spawn(self._fail_out)
             return True
 
-    def new_partitions(self, nodes, my_partitions, partition_ids):
+    def assigned_partitions(self, nodes, partition_ids):
         random.seed(':'.join(nodes))
         num_nodes = len(nodes)
         copy_partition_ids = list(partition_ids)
         random.shuffle(copy_partition_ids)
         random.seed()
-        return [
+        return {
             partition_id
             for i, partition_id in enumerate(copy_partition_ids)
-            if nodes[i % num_nodes] == self._identifier \
-                and partition_id not in my_partitions
-        ]
+            if nodes[i % num_nodes] == self._identifier
+        }
 
     def rebalance(self, partition_ids=None):
         if partition_ids is None:
@@ -394,12 +391,10 @@ class ZKPartitioner(object):
         self._release_locks()
 
         nodes = sorted([node for node in self._group], key=lambda x: hash(x))
-        my_new_partitions = self.new_partitions(nodes, my_partitions,
-                                                partition_ids)
+        my_new_partitions = self.assigned_partitions(nodes, partition_ids) - set(my_partitions) 
         self.logger.info('My new partitions (%d): %s', len(my_new_partitions), my_new_partitions)
         for partition in my_new_partitions:
-            c_id = nodes[int(partition) % len(nodes)]
-            self.consumer_partitions[c_id].append(int(partition))
+            self.consumer_partitions[self._identifier].append(int(partition))
             p_path = self.path_formats['owner'].format(group=self.group,
                                                        topic=self.topic,
                                                        partition=partition)
