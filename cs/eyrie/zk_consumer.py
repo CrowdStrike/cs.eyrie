@@ -679,13 +679,14 @@ class ZKConsumer(object):
             return []
         else:
             try:
-                return self.consumer.get_messages(count, block, timeout)
-            except FailedPayloadsError:
+                messages = self.consumer.get_messages(count, block, timeout)
+                if not messages and self.zkp.failed:
+                    raise FailedPayloadsError
+                return messages
+            except FailedPayloadsError as err:
                 msg = 'Failed to retrieve payload, restarting consumer'
                 self.logger.exception(msg)
-                self.stop()
-                self.init_zk()
-                return []
+                raise err
 
     def get_message(self, block=True, timeout=0.1, get_partition_info=None):
         return self.consumer.get_message(block, timeout, get_partition_info)

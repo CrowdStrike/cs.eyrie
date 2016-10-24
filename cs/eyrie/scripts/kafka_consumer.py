@@ -11,6 +11,7 @@ import time
 
 import gevent
 
+from kafka.common import FailedPayloadsError
 from kafka.common import KafkaMessage
 
 from kazoo.handlers.gevent import SequentialGeventHandler
@@ -132,6 +133,8 @@ class Ranger(object):
                                                             block=False):
                 self.msg_count += 1
                 self.send(*partition_msg)
+        except FailedPayloadsError:
+            self.terminate()
         except Exception:
             self.logger.exception('Error encountered, restarting consumer')
             self.consumer.stop()
