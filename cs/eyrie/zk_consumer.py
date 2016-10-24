@@ -523,10 +523,10 @@ class ZKConsumer(object):
                         self.logger.info('Restarting ZK partitioner')
                         self.zk.handler.spawn(self.init_zkp)
                     else:
-                        self.logger.info('ZK partitioner releasing set')
-                        self.zkp.release_set()
-                        self.logger.info('Re-joining group')
-                        self.zk.handler.spawn(self.zkp.join_group)
+                        self.logger.info('Scheduling ZK partitioner set release')
+                        rel_greenlet = handler.spawn(self.zkp.release_set)
+                        self.logger.info('Scheduling group re-join')
+                        rel_greenlet.link_value(lambda: self.zkp.join_group)
                 if not self.nodes:
                     self.logger.info('Partitioner aquired; setting child watch')
                     result = self.zk.get_children_async(self.zkp._group_path)
