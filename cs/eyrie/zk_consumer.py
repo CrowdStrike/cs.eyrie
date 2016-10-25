@@ -151,7 +151,6 @@ class ZKPartitioner(object):
 
         self.join_group()
 
-        self._was_allocated = False
         self._state_change = client.handler.rlock_object()
         client.add_listener(self._establish_sessionwatch)
 
@@ -343,22 +342,6 @@ class ZKPartitioner(object):
     def _establish_sessionwatch(self, state):
         """Register ourself to listen for session events, we shut down
         if we become lost"""
-        with self._state_change:
-            # Handle network partition: If connection gets suspended,
-            # change state to ALLOCATING if we had already ACQUIRED. This way
-            # the caller does not process the members since we could eventually
-            # lose session get repartitioned. If we got connected after a suspension
-            # it means we've not lost the session and still have our members. Hence,
-            # restore to ACQUIRED
-            if state == KazooState.SUSPENDED:
-                if self.state == PartitionState.ACQUIRED:
-                    self._was_allocated = True
-                    self.state = PartitionState.ALLOCATING
-            elif state == KazooState.CONNECTED:
-                if self._was_allocated:
-                    self._was_allocated = False
-                    self.state = PartitionState.ACQUIRED
-
         if state == KazooState.LOST:
             self._client.handler.spawn(self._fail_out)
             return True
@@ -398,16 +381,10 @@ class ZKPartitioner(object):
                                   partition)
                 kr(self._client.create, p_path,
                    value=self._identifier, ephemeral=True, makepath=True)
-            except RetryFailedError as err:
-                # A different consumer had been registered as the owner
-                expired_cid, zstat = self._client.get(p_path)
-                msg = 'Acquiring ownership of partition %s (was owned by %s)'
-                self.logger.warn(msg, partition, expired_cid)
-                # We need to delete / create, so that the node is created
-                # ephemeral and owned by us
-                self._client.delete(p_path)
-                self._client.create(p_path, value=self._identifier,
-                                    ephemeral=True, makepath=True)
+            except RetryFailedError:
+                # A different consumer is still connected and owns this,
+                # try to gracefully release everything else and fail out
+                self.finish()
         if self.partitions_changed_cb:
             self.partitions_changed_cb(self.consumer_partitions[self._identifier])
 
@@ -511,42 +488,49 @@ class ZKConsumer(object):
             self.zk.handler.spawn(self.init_zkp)
 
     def _zkp_wait(self):
+        handler = self.zk.handler
         while 1:
             if self.zkp.failed:
-                raise Exception("Lost or unable to acquire partition")
+                self.logger.warning("Lost or unable to acquire partition")
+                self.stop()
             elif self.zkp.release:
                 self.zkp.release_set()
             elif self.zkp.acquired:
                 def group_change_proxy(event):
                     self.logger.warn('Connected consumers changed')
-                    if self.zkp is None or self.zkp.failed:
+                    if self.zkp is None:
                         self.logger.info('Restarting ZK partitioner')
-                        self.zk.handler.spawn(self.init_zkp)
+                        handler.spawn(self.init_zkp)
+                    elif self.zkp.failed:
+                        self.logger.warning("Lost or unable to acquire partition")
+                        self.stop()
                     else:
-                        self.logger.info('ZK partitioner releasing set')
-                        self.zkp.release_set()
-                        self.logger.info('Re-joining group')
-                        self.zk.handler.spawn(self.zkp.join_group)
+                        self.logger.info('Scheduling ZK partitioner set release')
+                        rel_greenlet = handler.spawn(self.zkp.release_set)
+                        self.logger.info('Scheduling group re-join')
+                        rel_greenlet.link_value(lambda greenlet: self.zkp.join_group)
                 if not self.nodes:
                     self.logger.info('Partitioner aquired; setting child watch')
                     result = self.zk.get_children_async(self.zkp._group_path)
                     result.rawlink(group_change_proxy)
+                # Break out of while loop to begin consuming events
                 break
             elif self.zkp.allocating:
                 self.zkp.wait_for_acquire()
 
     def init_zkp(self):
-        if self.nodes:
-            self.zkp = StaticZKPartitioner(
-                self.zk, self.group, self.topic, self.nodes,
-                partitions_changed_cb=self.init_consumer,
-                logger=self.logger)
-        else:
-            self.zkp = ZKPartitioner(
-                self.zk, self.group, self.topic,
-                time_boundary=self.jitter_seconds,
-                partitions_changed_cb=self.init_consumer,
-                logger=self.logger)
+        if not hasattr(self, 'zkp') or self.zkp is None:
+            if self.nodes:
+                self.zkp = StaticZKPartitioner(
+                    self.zk, self.group, self.topic, self.nodes,
+                    partitions_changed_cb=self.init_consumer,
+                    logger=self.logger)
+            else:
+                self.zkp = ZKPartitioner(
+                    self.zk, self.group, self.topic,
+                    time_boundary=self.jitter_seconds,
+                    partitions_changed_cb=self.init_consumer,
+                    logger=self.logger)
 
         self._zkp_wait()
 
@@ -618,9 +602,10 @@ class ZKConsumer(object):
             self.client = None
         if self.zk is not None:
             self.logger.info('Stopping ZooKeeper client')
-            self.zkp.finish()
+            if self.zkp is not None and not self.zkp.failed:
+                self.zkp.finish()
+                self.zk.stop()
             self.zkp = None
-            self.zk.stop()
             self.zk = None
 
     def commit(self, partitions=None):
@@ -678,13 +663,14 @@ class ZKConsumer(object):
             return []
         else:
             try:
-                return self.consumer.get_messages(count, block, timeout)
-            except FailedPayloadsError:
+                messages = self.consumer.get_messages(count, block, timeout)
+                if not messages and self.zkp.failed:
+                    raise FailedPayloadsError
+                return messages
+            except FailedPayloadsError as err:
                 msg = 'Failed to retrieve payload, restarting consumer'
                 self.logger.exception(msg)
-                self.stop()
-                self.init_zk()
-                return []
+                raise err
 
     def get_message(self, block=True, timeout=0.1, get_partition_info=None):
         return self.consumer.get_message(block, timeout, get_partition_info)
