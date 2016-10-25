@@ -43,6 +43,7 @@ class Ranger(object):
     def __init__(self, config_uri, app_name,
                  zk_hosts=None, group=None, topic=None, title=None,
                  sample=False):
+        self._terminate = False
         self.config_uri = config_uri
         self.curr_proc = multiprocessing.current_process()
         if title is None and topic is not None:
@@ -114,8 +115,10 @@ class Ranger(object):
                              initial_sleep)
             self.consume_greenlet = gevent.spawn_later(initial_sleep,
                                                        self.onConsume)
-        hub = gevent.get_hub()
-        hub.join()
+        while True:
+            if self._terminate:
+                break
+            gevent.sleep(1)
 
     def send(self, partition, msg):
         try:
@@ -170,17 +173,10 @@ class Ranger(object):
             self.throughput_greenlet = gevent.spawn_later(commit_interval,
                                                           self.onThroughput)
         elif state == KazooState.SUSPENDED:
-            if self.commit_greenlet is not None:
-                self.logger.info('Killing commit greenlet')
-                self.commit_greenlet = self.commit_greenlet.kill()
-            if self.consume_greenlet is not None:
-                self.logger.info('Killing consume greenlet')
-                self.consume_greenlet = self.consume_greenlet.kill()
-            if self.throughput_greenlet is not None:
-                self.logger.info('Killing throughput greenlet')
-                self.throughput_greenlet = self.throughput_greenlet.kill()
+            self.terminate()
 
     def terminate(self):
+        self._terminate = True
         if self.commit_greenlet is not None:
             self.logger.info('Killing commit greenlet')
             self.commit_greenlet = self.commit_greenlet.kill()
