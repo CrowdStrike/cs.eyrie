@@ -151,7 +151,6 @@ class ZKPartitioner(object):
 
         self.join_group()
 
-        self._was_allocated = False
         self._state_change = client.handler.rlock_object()
         client.add_listener(self._establish_sessionwatch)
 
@@ -343,12 +342,6 @@ class ZKPartitioner(object):
     def _establish_sessionwatch(self, state):
         """Register ourself to listen for session events, we shut down
         if we become lost"""
-        with self._state_change:
-            if state == KazooState.CONNECTED:
-                if self._was_allocated:
-                    self._was_allocated = False
-                    self.state = PartitionState.ACQUIRED
-
         if state == KazooState.LOST:
             self._client.handler.spawn(self._fail_out)
             return True
