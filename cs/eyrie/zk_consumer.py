@@ -525,7 +525,7 @@ class ZKConsumer(object):
                         self.logger.info('Scheduling ZK partitioner set release')
                         rel_greenlet = handler.spawn(self.zkp.release_set)
                         self.logger.info('Scheduling group re-join')
-                        rel_greenlet.link_value(lambda: self.zkp.join_group)
+                        rel_greenlet.link_value(lambda greenlet: self.zkp.join_group)
                 if not self.nodes:
                     self.logger.info('Partitioner aquired; setting child watch')
                     result = self.zk.get_children_async(self.zkp._group_path)
@@ -536,7 +536,7 @@ class ZKConsumer(object):
                 self.zkp.wait_for_acquire()
 
     def init_zkp(self):
-        if self.zkp is None:
+        if not hasattr(self, 'zkp') or self.zkp is None:
             if self.nodes:
                 self.zkp = StaticZKPartitioner(
                     self.zk, self.group, self.topic, self.nodes,
@@ -619,9 +619,10 @@ class ZKConsumer(object):
             self.client = None
         if self.zk is not None:
             self.logger.info('Stopping ZooKeeper client')
-            self.zkp.finish()
+            if self.zkp is not None and not self.zkp.failed:
+                self.zkp.finish()
+                self.zk.stop()
             self.zkp = None
-            self.zk.stop()
             self.zk = None
 
     def commit(self, partitions=None):
