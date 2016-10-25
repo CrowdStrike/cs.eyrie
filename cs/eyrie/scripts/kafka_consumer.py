@@ -189,7 +189,8 @@ class Ranger(object):
         if self.consumer is not None:
             self.logger.info('Stopping Kafka consumer')
             self.consumer.stop()
-        super(Ranger, self).terminate()
+        self.logger.info('Closing ZMQ channel')
+        self.channel.close()
 
 
 def main():
