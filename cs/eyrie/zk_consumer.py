@@ -501,7 +501,7 @@ class ZKConsumer(object):
                     if self.zkp is None:
                         self.logger.info('Restarting ZK partitioner')
                         handler.spawn(self.init_zkp)
-                    elif self.zkp.failed:
+                    elif self.zkb is not None and self.zkp.failed:
                         self.logger.warning("Lost or unable to acquire partition")
                         self.stop()
                     else:
