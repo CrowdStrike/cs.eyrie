@@ -356,20 +356,24 @@ class ZKPartitioner(object):
         kr.retry_exceptions = kr.retry_exceptions + tuple([NodeExistsError])
 
         my_partitions = self.consumer_partitions[self._identifier]
-        self.logger.info('My partitions (%d): %s', len(my_partitions), my_partitions)
+        self.logger.info('My partitions (%d): %s',
+                         len(my_partitions), my_partitions)
 
         # Clean up old ownership data first, so we don't block
         # the joining node(s)
         self._release_locks()
 
         nodes = sorted([node for node in self._group], key=lambda x: hash(x))
+        self.logger.info('Connected nodes (%d): %s',
+                         len(nodes), nodes)
         my_new_partitions = [
             partition
             for partition in partition_ids
             if nodes[int(partition) % len(nodes)] == self._identifier and
                int(partition) not in my_partitions
         ]
-        self.logger.info('My new partitions (%d): %s', len(my_new_partitions), my_new_partitions)
+        self.logger.info('My new partitions (%d): %s',
+                         len(my_new_partitions), my_new_partitions)
         for partition in my_new_partitions:
             c_id = nodes[int(partition) % len(nodes)]
             self.consumer_partitions[c_id].append(int(partition))
