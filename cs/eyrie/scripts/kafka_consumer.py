@@ -6,6 +6,7 @@ import argparse
 import logging
 import multiprocessing
 import random
+import socket
 import sys
 import time
 
@@ -93,6 +94,8 @@ class Ranger(object):
                                              self.max_buffer_size)),
             auto_commit=False,
             nodes=consumers,
+            identifier='{}-{}'.format(socket.getfqdn(),
+                                      title.replace('(', '').replace(')', '')),
         )
         self.consumer.zk.add_listener(self.zk_session_watch)
 
