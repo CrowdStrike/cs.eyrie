@@ -288,7 +288,7 @@ class ZKPartitioner(object):
         self._acquire_event.clear()
 
         my_partitions = self.consumer_partitions[self._identifier]
-        nodes = sorted([node for node in self._group], key=lambda x: hash(x))
+        nodes = sorted([node for node in self._group])
         my_old_partitions = [
             partition
             for partition in self._set
@@ -363,7 +363,7 @@ class ZKPartitioner(object):
         # the joining node(s)
         self._release_locks()
 
-        nodes = sorted([node for node in self._group], key=lambda x: hash(x))
+        nodes = sorted([node for node in self._group])
         self.logger.info('Connected nodes (%d): %s',
                          len(nodes), nodes)
         my_new_partitions = [
@@ -446,6 +446,7 @@ class ZKConsumer(object):
             nodes,
             zk_handler=None,
             logger=None,
+            identifier=None,
             **consumer_kwargs):
         """Creates a Consumer that tracks state in ZooKeeper,
         rebalancing partition ownership as registered consumers change.
@@ -455,6 +456,7 @@ class ZKConsumer(object):
         if logger is None:
             logger = logging.getLogger('kafka.consumer.ZKConsumer')
         self.logger = logger
+        self.identifier = identifier
 
         if KafkaClient is None:
             raise RuntimeError("Kafka support requires cs.eyrie to be installed with the Kafka extra: install_requires= ['cs.eyrie[Kafka]']")
@@ -528,13 +530,13 @@ class ZKConsumer(object):
                 self.zkp = StaticZKPartitioner(
                     self.zk, self.group, self.topic, self.nodes,
                     partitions_changed_cb=self.init_consumer,
-                    logger=self.logger)
+                    logger=self.logger, identifier=self.identifier)
             else:
                 self.zkp = ZKPartitioner(
                     self.zk, self.group, self.topic,
                     time_boundary=self.jitter_seconds,
                     partitions_changed_cb=self.init_consumer,
-                    logger=self.logger)
+                    logger=self.logger, identifier=self.identifier)
 
         self._zkp_wait()
 
