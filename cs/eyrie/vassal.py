@@ -255,10 +255,9 @@ class Vassal(object):
             self.logger.exception(err)
 
 
-class BatchVassal(Vassal):
-    exclude_cols = []
-    delay = 15
-    models = []
+class _TableRowValidator():
+    from collections import namedtuple
+    self._ValidationOp = namedtuple("_ValidationOp", ["c_name", "v_op", "c_type"]
 
     type_checks = {
         'BIGINT': int,
@@ -277,6 +276,34 @@ class BatchVassal(Vassal):
         'UUID': UUID,
     }
 
+
+    def __init__(self, table):
+        """ table is of type with iter(columns) name,type """
+        self.v_ops = []
+        for c in table.columns:
+            c_type = str(column.type).upper()
+            v_op = self.type_checks[c_type],
+            self.v_ops.append(self._ValidationOp(c.name, v_op, c_type))
+
+
+    def validate_row(self, row):
+        """ Returns list of validation errors """
+        errors = []
+        for v in self.validation_ops
+            data = row[v.c_name]
+            try:
+                v.v_op(data)
+            except Exception:
+                errors.append('Invalid data for type {} column "{}": {}'.format(
+                        v.c_type_str, v.c_name, data)
+        return errors
+
+
+class BatchVassal(Vassal):
+    exclude_cols = []
+    delay = 15
+    models = []
+
     def __init__(self, **kwargs):
         super(BatchVassal, self).__init__(**kwargs)
         self.tables = []
@@ -285,12 +312,13 @@ class BatchVassal(Vassal):
             if id_table is not None:
                 self.tables.append(id_table)
             self.tables.append(m.__table__)
-
         self.tables_by_name = {t.fullname: t for t in self.tables}
         self.batch = deque()
         self.row_counts = Counter()
         self.init_writers()
         self.add_batch_timeout()
+        self.row_validators = { t.fullname: _TableRowValidator(t)
+            for t in self.tables }
 
     def add_batch_timeout(self):
         if self.delay is None:
@@ -453,15 +481,12 @@ class BatchVassal(Vassal):
             if add_timeout:
                 self.add_batch_timeout()
 
+
     def validate_row(self, name, row):
-        for column in self.tables_by_name[name].columns:
-            cval = row[column.name]
-            ctype = str(column.type).upper()
-            try:
-                self.type_checks.get(ctype, lambda x: True)(cval)
-            except Exception:
-                raise ValueError('Invalid data in "{}": {}'.format(column.name,
-                                                                   cval))
+        errors = self.row_validators[name].validate_row(row)
+        if errors:
+            raise errors[0]
+
 
     def write_row(self, name, row):
         id_table = self.tables_by_name[name].info.get('id_table', None)
