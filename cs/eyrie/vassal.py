@@ -17,11 +17,13 @@ import sys
 from uuid import UUID
 
 try:
+    from dateutil.parser import parse as dt_parse
     from sixfeetup.bowab.db import init_sa
     from psycopg2 import Error
     from psycopg2.extras import register_uuid
     from psycopg2.extras import DictCursor
 except ImportError:
+    dt_parse = None
     init_sa = None
     Error = None
     register_uuid = None
@@ -258,6 +260,23 @@ class BatchVassal(Vassal):
     delay = 15
     models = []
 
+    type_checks = {
+        'BIGINT': int,
+        'BIGINTEGER': int,
+        'DECIMAL': float,
+        'FLOAT': float,
+        'INT': int,
+        'INTEGER': int,
+        'DATE': dt_parse,
+        'DATETIME': dt_parse,
+        'REAL': float,
+        'SMALLINT': int,
+        'SMALLINTEGER': int,
+        'TIME': dt_parse,
+        'TIMESTAMP': dt_parse,
+        'UUID': UUID,
+    }
+
     def __init__(self, **kwargs):
         super(BatchVassal, self).__init__(**kwargs)
         self.tables = []
@@ -433,6 +452,16 @@ class BatchVassal(Vassal):
         finally:
             if add_timeout:
                 self.add_batch_timeout()
+
+    def validate_row(self, name, row):
+        for column in self.tables_by_name[name].columns:
+            cval = row[column.name]
+            ctype = str(column.type).upper()
+            try:
+                self.type_checks.get(ctype, lambda x: True)(cval)
+            except Exception:
+                raise ValueError('Invalid data in "{}": {}'.format(column.name,
+                                                                   cval))
 
     def write_row(self, name, row):
         id_table = self.tables_by_name[name].info.get('id_table', None)

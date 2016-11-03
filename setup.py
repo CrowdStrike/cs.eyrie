@@ -46,7 +46,7 @@ setup(
     extras_require={
         'Dogpile':  ["dogpile.cache"],
         'Kafka':  ["kafka-python", "kazoo", "gevent"],
-        'PostgreSQL':  ["sixfeetup.bowab", "zope.sqlalchemy"],
+        'PostgreSQL':  ["python-dateutil", "sixfeetup.bowab", "zope.sqlalchemy"],
     },
     license="BSD",
     zip_safe=False,
