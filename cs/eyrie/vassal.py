@@ -7,7 +7,7 @@ try:
     from cStringIO import StringIO
 except ImportError:
     from io import StringIO
-from collections import Counter, OrderedDict, defaultdict, deque
+from collections import Counter, OrderedDict, defaultdict, deque, namedtuple
 from datetime import timedelta
 from functools import partial
 import logging
@@ -255,9 +255,10 @@ class Vassal(object):
             self.logger.exception(err)
 
 
+_ValidationOp = namedtuple("_ValidationOp", ["c_name", "v_op", "c_type"])
+
+
 class _TableRowValidator():
-    from collections import namedtuple
-    self._ValidationOp = namedtuple("_ValidationOp", ["c_name", "v_op", "c_type"]
 
     type_checks = {
         'BIGINT': int,
@@ -276,15 +277,14 @@ class _TableRowValidator():
         'UUID': UUID,
     }
 
-
     def __init__(self, table):
         """ table is of type with iter(columns) name,type """
-        self.v_ops = []
-        for c in table.columns:
-            c_type = str(column.type).upper()
-            v_op = self.type_checks[c_type],
-            self.v_ops.append(self._ValidationOp(c.name, v_op, c_type))
-
+        self.validation_ops = [
+            _ValidationOp(column.name,
+                          self.type_checks[str(column.type).upper()],
+                          str(column.type).upper())
+            for column in table.columns
+        ]
 
     def validate_row(self, row):
         """ Returns list of validation errors """
