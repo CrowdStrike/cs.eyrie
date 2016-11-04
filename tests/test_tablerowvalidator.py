@@ -34,7 +34,7 @@ class TestRowValidator(unittest.TestCase):
             ])
         self.table_validator = vassal._TableRowValidator(fake_table)
 
-    def all_valid(self):
+    def test_all_valid(self):
         row = {
                 'BIGINT':'12455555555',
                 'BIGINTEGER':'1151521521',
@@ -54,7 +54,7 @@ class TestRowValidator(unittest.TestCase):
         errors = self.table_validator.validate_row(row)
         unittest.assertEqual(len(errors), 0, 'No errors')
 
-    def invalid_date(self):
+    def test_invalid_date(self):
         row = {
                 'BIGINT':'12455555555',
                 'BIGINTEGER':'1151521521',
