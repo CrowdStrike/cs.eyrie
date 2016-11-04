@@ -7,7 +7,7 @@ try:
     from cStringIO import StringIO
 except ImportError:
     from io import StringIO
-from collections import Counter, OrderedDict, defaultdict, deque
+from collections import Counter, OrderedDict, defaultdict, deque, namedtuple
 from datetime import timedelta
 from functools import partial
 import logging
@@ -17,12 +17,21 @@ import sys
 from uuid import UUID
 
 try:
+    from dateutil.parser import parse as dt_parse
+except ImportError:
+    dt_parse = None
+
+try:
     from sixfeetup.bowab.db import init_sa
-    from psycopg2 import Error
+except ImportError:
+    init_sa = None
+
+try:
+    from psycopg2 import DataError, Error
     from psycopg2.extras import register_uuid
     from psycopg2.extras import DictCursor
 except ImportError:
-    init_sa = None
+    DataError = None
     Error = None
     register_uuid = None
     DictCursor = None
@@ -253,6 +262,56 @@ class Vassal(object):
             self.logger.exception(err)
 
 
+class _TableRowValidator(object):
+    _ValidationOp = namedtuple("_ValidationOp", [
+        "column_name",
+        "validation_op",
+        "col_type",
+    ])
+
+    type_checks = {
+        'BIGINT': int,
+        'BIGINTEGER': int,
+        'DECIMAL': float,
+        'FLOAT': float,
+        'INT': int,
+        'INTEGER': int,
+        'DATE': dt_parse,
+        'DATETIME': dt_parse,
+        'REAL': float,
+        'SMALLINT': int,
+        'SMALLINTEGER': int,
+        'TIME': dt_parse,
+        'TIMESTAMP': dt_parse,
+        'UUID': UUID,
+    }
+
+    def __init__(self, table, *exclude_cols):
+        """ table is of type with iter(columns) name,type """
+        self.validation_ops = []
+        for column in table.columns:
+            if column.name in exclude_cols:
+                continue
+            col_type = str(column.type).upper()
+            validation_op = self.type_checks.get(col_type, lambda x: True)
+            self.validation_ops.append(
+                self._ValidationOp(column.name, validation_op, col_type)
+            )
+
+    def validate_row(self, row):
+        """ Returns list of validation errors """
+        errors = []
+        for v in self.validation_ops:
+            try:
+                data = row.get(v.column_name)
+                if data:
+                    v.validation_op(data)
+            except Exception:
+                msg = 'Invalid data for type {} column "{}": "{}"'
+                errors.append(msg.format(v.col_type, v.column_name, data))
+        return errors
+
+
 class BatchVassal(Vassal):
     exclude_cols = []
     delay = 15
@@ -266,12 +325,14 @@ class BatchVassal(Vassal):
             if id_table is not None:
                 self.tables.append(id_table)
             self.tables.append(m.__table__)
-
         self.tables_by_name = {t.fullname: t for t in self.tables}
         self.batch = deque()
         self.row_counts = Counter()
+        self.init_validators()
         self.init_writers()
         self.add_batch_timeout()
+        settings = self.config.registry.settings
+        self.dump_dir = settings.get('eyrie.vassal_dump_dir')
 
     def add_batch_timeout(self):
         if self.delay is None:
@@ -279,6 +340,12 @@ class BatchVassal(Vassal):
         else:
             self.loop.add_timeout(timedelta(seconds=self.delay),
                                   self.send_batch)
+
+    def init_validators(self):
+        self.row_validators = {
+            t.fullname: _TableRowValidator(t, *self.exclude_cols)
+            for t in self.tables
+        }
 
     def init_writers(self):
         self.bufs = {}
@@ -422,6 +489,29 @@ class BatchVassal(Vassal):
                 buf.truncate()
             self.pks_seen.clear()
             self.logger.info("Batch send complete: %d", all_rows)
+        except DataError as err:
+            self.logger.exception(err)
+            self.cursor.execute('ROLLBACK;')
+            # Dump contents of buffers
+            for bname, buf in self.bufs.items():
+                buf.seek(0)
+                if self.dump_dir:
+                    # If we have a directory configured,
+                    # write out the raw CSV files to it
+                    fname = '{}.csv'.format(bname)
+                    fpath = os.path.join(self.dump_dir, fname)
+                    with open(fpath, 'a+') as fObj:
+                        fObj.write(buf.getvalue())
+                else:
+                    # If not, log each line at debug level
+                    reader = self.init_reader(bname)
+                    for line in reader:
+                        self.logger.debug("%s: %s", bname, line)
+                # Free memory used
+                buf.close()
+            # Re-initialize writers with fresh buffers
+            self.init_writers()
+            self.pks_seen.clear()
         except Exception as err:
             self.logger.exception(err)
             self.cursor.execute('ROLLBACK;')
@@ -433,6 +523,9 @@ class BatchVassal(Vassal):
         finally:
             if add_timeout:
                 self.add_batch_timeout()
+
+    def validate_row(self, name, row):
+        return self.row_validators[name].validate_row(row)
 
     def write_row(self, name, row):
         id_table = self.tables_by_name[name].info.get('id_table', None)

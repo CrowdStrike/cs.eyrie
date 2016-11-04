@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os
 import sys
 
 
@@ -29,6 +28,8 @@ if sys.version < '3':
 
 test_requirements = [
     # TODO: put package test requirements here
+    'python-dateutil',
+    'dogpile.cache',
 ]
 
 setup(
@@ -46,7 +47,7 @@ setup(
     extras_require={
         'Dogpile':  ["dogpile.cache"],
         'Kafka':  ["kafka-python", "kazoo", "gevent"],
-        'PostgreSQL':  ["sixfeetup.bowab", "zope.sqlalchemy"],
+        'PostgreSQL':  ["python-dateutil", "sixfeetup.bowab", "zope.sqlalchemy"],
     },
     license="BSD",
     zip_safe=False,
@@ -60,7 +61,7 @@ setup(
         'Programming Language :: Python :: 2.7',
         'Topic :: System :: Distributed Computing',
     ],
-    test_suite='tests',
+    test_suite='tests.test_collector',
     tests_require=test_requirements,
     entry_points={
         'paste.app_factory': 'main = cs.eyrie:main',
