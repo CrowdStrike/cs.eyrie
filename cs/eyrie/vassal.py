@@ -264,7 +264,7 @@ class Vassal(object):
 _ValidationOp = namedtuple("_ValidationOp", ["c_name", "v_op", "c_type"])
 
 
-class _TableRowValidator():
+class _TableRowValidator(object):
 
     type_checks = {
         'BIGINT': int,
