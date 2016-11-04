@@ -304,7 +304,7 @@ class _TableRowValidator():
                 if data:
                     v.v_op(data)
             except Exception:
-                msg = 'Invalid data for type {} column "{}": {}'
+                msg = 'Invalid data for type {} column "{}": "{}"'
                 errors.append(msg.format(v.c_type, v.c_name, data))
         return errors
 
