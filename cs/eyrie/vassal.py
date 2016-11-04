@@ -496,12 +496,8 @@ class BatchVassal(Vassal):
             if add_timeout:
                 self.add_batch_timeout()
 
-
     def validate_row(self, name, row):
-        errors = self.row_validators[name].validate_row(row)
-        if errors:
-            raise errors[0]
-
+        return self.row_validators[name].validate_row(row)
 
     def write_row(self, name, row):
         id_table = self.tables_by_name[name].info.get('id_table', None)
