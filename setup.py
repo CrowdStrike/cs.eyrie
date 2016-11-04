@@ -28,6 +28,7 @@ if sys.version < '3':
 
 test_requirements = [
     # TODO: put package test requirements here
+    'python-dateutil',
     'dogpile.cache',
 ]
 
