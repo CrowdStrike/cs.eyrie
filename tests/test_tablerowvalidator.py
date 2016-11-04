@@ -52,7 +52,7 @@ class TestRowValidator(unittest.TestCase):
                 'UUID':'123e4567-e89b-12d3-a456-426655440000'
         }
         errors = self.table_validator.validate_row(row)
-        unittest.assertEqual(len(errors), 0, 'No errors')
+        self.assertEqual(len(errors), 0, 'No errors')
 
     def test_invalid_date(self):
         row = {
@@ -72,7 +72,7 @@ class TestRowValidator(unittest.TestCase):
                 'UUID':'123e4567-e89b-12d3-a456-426655440000'
         }
         errors = self.table_validator.validate_row(row)
-        unittest.assertEqual(len(errors), 4, 'Four dates fail')
+        self.assertEqual(len(errors), 4, 'Four dates fail')
 
     def tearDown(self):
         pass
