@@ -18,13 +18,19 @@ from uuid import UUID
 
 try:
     from dateutil.parser import parse as dt_parse
+except ImportError:
+    dt_parse = None
+
+try:
     from sixfeetup.bowab.db import init_sa
+except ImportError:
+    init_sa = None
+
+try:
     from psycopg2 import Error
     from psycopg2.extras import register_uuid
     from psycopg2.extras import DictCursor
 except ImportError:
-    dt_parse = None
-    init_sa = None
     Error = None
     register_uuid = None
     DictCursor = None
