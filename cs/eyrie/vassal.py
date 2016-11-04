@@ -261,10 +261,12 @@ class Vassal(object):
             self.logger.exception(err)
 
 
-_ValidationOp = namedtuple("_ValidationOp", ["c_name", "v_op", "c_type"])
-
-
 class _TableRowValidator(object):
+    _ValidationOp = namedtuple("_ValidationOp", [
+        "column_name",
+        "validation_op",
+        "col_type",
+    ])
 
     type_checks = {
         'BIGINT': int,
@@ -289,10 +291,10 @@ class _TableRowValidator(object):
         for column in table.columns:
             if column.name in exclude_cols:
                 continue
-            c_type = str(column.type).upper()
-            v_op = self.type_checks.get(c_type, lambda x: True)
+            col_type = str(column.type).upper()
+            validation_op = self.type_checks.get(col_type, lambda x: True)
             self.validation_ops.append(
-                _ValidationOp(column.name, v_op, c_type)
+                self._ValidationOp(column.name, validation_op, col_type)
             )
 
     def validate_row(self, row):
@@ -300,12 +302,12 @@ class _TableRowValidator(object):
         errors = []
         for v in self.validation_ops:
             try:
-                data = row.get(v.c_name)
+                data = row.get(v.column_name)
                 if data:
-                    v.v_op(data)
+                    v.validation_op(data)
             except Exception:
                 msg = 'Invalid data for type {} column "{}": "{}"'
-                errors.append(msg.format(v.c_type, v.c_name, data))
+                errors.append(msg.format(v.col_type, v.column_name, data))
         return errors
 
 
