@@ -37,7 +37,7 @@ class TestRowValidator(unittest.TestCase):
         ])
         self.table_validator = vassal._TableRowValidator(self.fake_table)
 
-    def test_all_valid(self):
+    def build_row(self, **kwargs):
         row = {
             'BIGINT': '12455555555',
             'BIGINTEGER': '1151521521',
@@ -52,30 +52,34 @@ class TestRowValidator(unittest.TestCase):
             'SMALLINTEGER': '125421',
             'TIME': '23:00:00Z',
             'TIMESTAMP': '1982-12-31T23:00:00Z',
-            'UUID': '123e4567-e89b-12d3-a456-426655440000'
+            'UUID': '123e4567-e89b-12d3-a456-426655440000',
         }
-        errors = self.table_validator.validate_row(row)
-        self.assertEqual(len(errors), 0, 'No errors')
+        row.update(kwargs)
+        return row
 
-    def test_invalid_date(self):
-        row = {
-            'BIGINT': '12455555555',
-            'BIGINTEGER': '1151521521',
-            'DECIMAL': '234234.32423432',
-            'FLOAT': '2535233.253253',
-            'INT': '253235',
-            'INTEGER': '253325',
-            'DATE': 'foobar',
-            'DATETIME': 'foobar',
-            'REAL': '125125.325',
-            'SMALLINT': '234',
-            'SMALLINTEGER': '125421',
-            'TIME': 'foobar',
-            'TIMESTAMP': 'foobar',
-            'UUID': '123e4567-e89b-12d3-a456-426655440000'
-        }
-        errors = self.table_validator.validate_row(row)
-        self.assertEqual(len(errors), 4, 'Four dates fail')
+    def test_all_valid(self):
+        errors = self.table_validator.validate_row(self.build_row())
+        self.assertEqual(len(errors),
+                         0,
+                         'Unexpected errors: {}'.format(errors))
+
+    def test_invalid_timestamp(self):
+        # These values observed from PSO's Reaper
+        errors = self.table_validator.validate_row(self.build_row(
+            DATETIME='+20162016-11-01T02:00:00',
+            TIMESTAMP='181816-10-28T06:40:00',
+        ))
+        self.assertEqual(len(errors),
+                         2,
+                         'Wrong number of errors: {}'.format(errors))
+
+    def test_invalid(self):
+        for column in self.fake_table.columns:
+            kwargs = {column.name: 'foobar'}
+            errors = self.table_validator.validate_row(self.build_row(**kwargs))
+            self.assertEqual(len(errors),
+                             1,
+                             'Wrong number of errors: {}'.format(errors))
 
     def tearDown(self):
         pass
