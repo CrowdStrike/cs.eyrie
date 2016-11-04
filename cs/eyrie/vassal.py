@@ -285,12 +285,13 @@ class _TableRowValidator():
 
     def __init__(self, table):
         """ table is of type with iter(columns) name,type """
-        self.validation_ops = [
-            _ValidationOp(column.name,
-                          self.type_checks[str(column.type).upper()],
-                          str(column.type).upper())
-            for column in table.columns
-        ]
+        self.validation_ops = []
+        for column in table.columns:
+            c_type = str(column.type).upper()
+            v_op = self.type_checks.get(c_type, lambda x: True)
+            self.validation_ops.append(
+                _ValidationOp(column.name, v_op, c_type)
+            )
 
     def validate_row(self, row):
         """ Returns list of validation errors """
