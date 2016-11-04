@@ -283,10 +283,12 @@ class _TableRowValidator():
         'UUID': UUID,
     }
 
-    def __init__(self, table):
+    def __init__(self, table, *exclude_cols):
         """ table is of type with iter(columns) name,type """
         self.validation_ops = []
         for column in table.columns:
+            if column.name in exclude_cols:
+                continue
             c_type = str(column.type).upper()
             v_op = self.type_checks.get(c_type, lambda x: True)
             self.validation_ops.append(
@@ -322,10 +324,9 @@ class BatchVassal(Vassal):
         self.tables_by_name = {t.fullname: t for t in self.tables}
         self.batch = deque()
         self.row_counts = Counter()
+        self.init_validators()
         self.init_writers()
         self.add_batch_timeout()
-        self.row_validators = { t.fullname: _TableRowValidator(t)
-            for t in self.tables }
 
     def add_batch_timeout(self):
         if self.delay is None:
@@ -333,6 +334,12 @@ class BatchVassal(Vassal):
         else:
             self.loop.add_timeout(timedelta(seconds=self.delay),
                                   self.send_batch)
+
+    def init_validators(self):
+        self.row_validators = {
+            t.fullname: _TableRowValidator(t, *self.exclude_cols)
+            for t in self.tables
+        }
 
     def init_writers(self):
         self.bufs = {}
