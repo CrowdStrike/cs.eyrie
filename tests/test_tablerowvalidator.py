@@ -8,9 +8,12 @@ from cs.eyrie import vassal
 from collections import namedtuple
 
 
-Column = namedtuple('Column', ['name', 'type']
+Column = namedtuple('Column', ['name', 'type'])
+
+
 class _FakeTable():
-    __init__(columns):
+
+    def __init__(self, columns):
         self.columns = columns
 
 

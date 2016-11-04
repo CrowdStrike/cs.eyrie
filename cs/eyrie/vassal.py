@@ -289,13 +289,13 @@ class _TableRowValidator():
     def validate_row(self, row):
         """ Returns list of validation errors """
         errors = []
-        for v in self.validation_ops
+        for v in self.validation_ops:
             data = row[v.c_name]
             try:
                 v.v_op(data)
             except Exception:
-                errors.append('Invalid data for type {} column "{}": {}'.format(
-                        v.c_type_str, v.c_name, data)
+                msg = 'Invalid data for type {} column "{}": {}'
+                errors.append(msg.format(v.c_type, v.c_name, data))
         return errors
 
 
