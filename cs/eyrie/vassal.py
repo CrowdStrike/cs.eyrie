@@ -27,10 +27,11 @@ except ImportError:
     init_sa = None
 
 try:
-    from psycopg2 import Error
+    from psycopg2 import DataError, Error
     from psycopg2.extras import register_uuid
     from psycopg2.extras import DictCursor
 except ImportError:
+    DataError = None
     Error = None
     register_uuid = None
     DictCursor = None
@@ -328,6 +329,8 @@ class BatchVassal(Vassal):
         self.init_validators()
         self.init_writers()
         self.add_batch_timeout()
+        settings = self.config.registry.settings
+        self.dump_dir = settings.get('eyrie.vassal_dump_dir')
 
     def add_batch_timeout(self):
         if self.delay is None:
@@ -484,6 +487,29 @@ class BatchVassal(Vassal):
                 buf.truncate()
             self.pks_seen.clear()
             self.logger.info("Batch send complete: %d", all_rows)
+        except DataError as err:
+            self.logger.exception(err)
+            self.cursor.execute('ROLLBACK;')
+            # Dump contents of buffers
+            for bname, buf in self.bufs.items():
+                buf.seek(0)
+                if self.dump_dir:
+                    # If we have a directory configured,
+                    # write out the raw CSV files to it
+                    fname = '{}.csv'.format(bname)
+                    fpath = os.path.join(self.dump_dir, fname)
+                    with open(fpath, 'a+') as fObj:
+                        fObj.write(buf.getvalue())
+                else:
+                    # If not, log each line at debug level
+                    reader = self.init_reader(bname)
+                    for line in reader:
+                        self.logger.debug("%s: %s", bname, line)
+                # Free memory used
+                buf.close()
+            # Re-initialize writers with fresh buffers
+            self.init_writers()
+            self.pks_seen.clear()
         except Exception as err:
             self.logger.exception(err)
             self.cursor.execute('ROLLBACK;')
