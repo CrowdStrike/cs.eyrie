@@ -67,6 +67,7 @@ setup(
     entry_points={
         'paste.app_factory': 'main = cs.eyrie:main',
         'console_scripts': [
+            'actuator = cs.eyrie.scripts.actuator:main',
             'eyrie_logger = cs.eyrie.scripts.logger:main',
             'eyrie_injector = cs.eyrie.scripts.log_injector:main',
             'kafka_consumer = cs.eyrie.scripts.kafka_consumer:main [Kafka]',

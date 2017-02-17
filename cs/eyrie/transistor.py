@@ -22,6 +22,23 @@ from zope.interface import implementer
 RUNNING, CLOSING, CLOSED = range(3)
 
 
+KafkaMessage = namedtuple(
+    'KafkaMessage', [
+        'key',
+        'offset',
+        'partition',
+        'topic',
+        'value',
+    ],
+)
+
+
+def get_last_element(msg):
+    if isinstance(msg, (list, tuple)):
+        return msg[-1]
+    return msg
+
+
 @implementer(ITransistor)
 class Transistor(object):
     """Implementation of ITransistor that handles all interaction with
