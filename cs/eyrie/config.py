@@ -19,6 +19,7 @@ import traceback
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 from copy import copy
+from datetime import timedelta
 from functools import partial
 from logging.config import dictConfig
 
@@ -39,6 +40,8 @@ except ImportError:
     GenericMemcachedBackend = None
 
 
+INITIAL_TIMEOUT = timedelta(milliseconds=10)
+MAX_TIMEOUT = timedelta(seconds=45)
 LOGGING_PORT = 16385
 LOGGING_ENDPOINT = 'tcp://127.0.0.1:{}'.format(LOGGING_PORT)
 ROUTER_OUTBOUND = 'ipc:///tmp/kafka_consume.ipc'
