@@ -12,7 +12,8 @@ queues throughout.
 from os import linesep
 
 from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
-from cs.eyrie.interfaces import IDrain, ITransistor
+from cs.eyrie.interfaces import IDrain, ISource, ITransistor
+from datadog import statsd
 from tornado import gen
 from tornado.locks import Event
 from zope.interface import implementer
@@ -190,3 +191,50 @@ class StreamDrain(object):
         """Callback interface for when messages are delivered.
         """
         pass
+
+
+# Source implementations
+@implementer(ISource)
+class StreamSource(object):
+    """Implementation of ISource that reads data from stdin.
+    """
+
+    def __init__(self, logger, loop, queue, stream,
+                 metric_prefix='source'):
+        self.gate = queue
+        self.collector = stream
+        self.logger = logger
+        self.loop = loop
+        self.metric_prefix = metric_prefix
+        self.end_of_input = Event()
+        self.input_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+        self.loop.spawn_callback(self.onInput)
+
+    @gen.coroutine
+    def close(self):
+        self.state = CLOSING
+        self.logger.warning('Closing source')
+        self.collector.close()
+
+    @gen.coroutine
+    def onInput(self):
+        respawn = True
+        try:
+            msg = self.collector.readline()
+            if msg:
+                yield self.gate.put(msg)
+                statsd.increment('%s.queued' % self.metric_prefix,
+                                 tags=[self.sender_tag])
+            else:
+                self.end_of_input.set()
+                respawn = False
+        except Exception as err:
+            self.logger.exception(err)
+            self.input_error.set()
+            respawn = False
+        finally:
+            if respawn:
+                self.loop.spawn_callback(self.onInput)
