@@ -381,6 +381,60 @@ class ZMQDrain(object):
 
 
 # Source implementations
+@implementer(ISource)
+class PailfileSource(object):
+    """Implementation of ISource that reads data from a Hadoop pailfile.
+    """
+
+    def __init__(self, logger, loop, queue, sequence_reader,
+                 metric_prefix='source', infinite=False):
+        self.gate = queue
+        self.collector = sequence_reader
+        self.logger = logger
+        self.loop = loop
+        self.metric_prefix = metric_prefix
+        self.end_of_input = Event()
+        self.input_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+        self._infinite = infinite
+        self.loop.spawn_callback(self.onInput)
+
+    @gen.coroutine
+    def close(self):
+        self.state = CLOSING
+        self.logger.warning('Closing source')
+        if not self.collector.closed():
+            self.collector.close()
+
+    @gen.coroutine
+    def onInput(self):
+        respawn = True
+        try:
+            key = self.collector.getKeyClass()()
+            result = self.collector.nextKey(key)
+            if result:
+                yield self.gate.put(key.toString())
+                self.logger.info('PailfileSource queued message: %d',
+                                 self.gate.qsize())
+                statsd.increment('%s.queued' % self.metric_prefix,
+                                 tags=[self.sender_tag])
+            else:
+                if self._infinite:
+                    self.collector.sync(0)
+                else:
+                    self.end_of_input.set()
+                    respawn = False
+        except Exception as err:
+            self.logger.exception(err)
+            self.input_error.set()
+            respawn = False
+        finally:
+            if respawn:
+                self.loop.spawn_callback(self.onInput)
+
+
 @implementer(ISource, IKafka)
 class RDKafkaSource(object):
     """Implementation of ISource that consumes messages from a Kafka topic.
