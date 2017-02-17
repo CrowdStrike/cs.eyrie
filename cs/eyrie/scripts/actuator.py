@@ -1,4 +1,5 @@
 import sys
+from os.path import isfile
 
 import zmq
 from confluent_kafka import Consumer, Producer
@@ -6,10 +7,11 @@ from cs.eyrie import Vassal, ZMQChannel, script_main
 from cs.eyrie.interfaces import IKafka
 from cs.eyrie.transistor import (
     CLOSED,
-    RDKafkaSource, StreamSource, ZMQSource,
+    PailfileSource, RDKafkaSource, StreamSource, ZMQSource,
     Transistor,
     RDKafkaDrain, StreamDrain, ZMQDrain,
 )
+from hadoop.io import SequenceFile
 from pyramid.path import DottedNameResolver
 from tornado import gen
 from tornado.locks import Semaphore
@@ -174,6 +176,14 @@ class Actuator(Vassal):
             *kwargs['input']
         )
 
+    def init_pailfile_source(self, **kwargs):
+        return PailfileSource(
+            self.logger,
+            self.loop,
+            kwargs['gate'],
+            SequenceFile.Reader(kwargs['input']),
+        )
+
     def init_stream_drain(self, **kwargs):
         return StreamDrain(
             self.logger,
@@ -196,6 +206,9 @@ class Actuator(Vassal):
         if kwargs['input'][0] == '-':
             del self.channels['input']
             source = self.init_stream_source(**kwargs)
+        elif isfile(kwargs['input'][0]):
+            del self.channels['input']
+            source = self.init_pailfile_source(**kwargs)
         elif '://' in kwargs['input'][0]:
             source = self.init_zmq_source(**kwargs)
         else:
