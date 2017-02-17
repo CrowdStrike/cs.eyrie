@@ -7,7 +7,7 @@ from cs.eyrie.transistor import (
     CLOSED,
     StreamSource, ZMQSource,
     Transistor,
-    StreamDrain,
+    StreamDrain, ZMQDrain,
 )
 from pyramid.path import DottedNameResolver
 from tornado import gen
@@ -23,6 +23,11 @@ class Actuator(Vassal):
             endpoint=None,
             socket_type=zmq.PULL,
         ),
+        output=ZMQChannel(
+            # This is configured dynamically at runtime
+            endpoint=None,
+            socket_type=zmq.PUSH,
+        ),
     )
     title = "(rf:actuator)"
     app_name = 'rf'
@@ -32,6 +37,14 @@ class Actuator(Vassal):
             dict(
                 help="Bind ZMQ input socket",
                 default=True,
+                action='store_true',
+            )
+        ),
+        (
+            ('--bind-output',),
+            dict(
+                help="Bind ZMQ output socket",
+                default=False,
                 action='store_true',
             )
         ),
@@ -111,6 +124,8 @@ class Actuator(Vassal):
         if kwargs['output'] == '-':
             del self.channels['output']
             drain = self.init_stream_drain(**kwargs)
+        elif '://' in kwargs['output'][0]:
+            drain = self.init_zmq_drain(**kwargs)
 
         resolver = DottedNameResolver()
         transducer = resolver.maybe_resolve(kwargs['transducer'])
@@ -121,6 +136,24 @@ class Actuator(Vassal):
             source,
             drain,
             transducer,
+        )
+
+    def init_zmq_drain(self, **kwargs):
+        channel = ZMQChannel(**dict(
+            vars(self.channels['output']),
+            bind=kwargs['bind_output'],
+            endpoint=kwargs['output'],
+        ))
+        socket = self.context.socket(channel.socket_type)
+        socket.set_hwm(kwargs['inflight'])
+        if kwargs['bind_output']:
+            socket.bind(kwargs['output'])
+        else:
+            socket.connect(kwargs['output'])
+        return ZMQDrain(
+            self.logger,
+            self.loop,
+            socket,
         )
 
     def init_zmq_source(self, **kwargs):
