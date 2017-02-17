@@ -210,6 +210,77 @@ class StreamDrain(object):
         pass
 
 
+@implementer(IDrain)
+class ZMQDrain(object):
+    """Implementation of IDrain that pushes to an asynchronous
+    zmq.eventloop.zmqstream.ZMQStream. This implementation overrides the
+    high-water mark behavior from cs.eyrie.vassal.Vassal to use a
+    tornado.queues.Queue.
+    """
+
+    def __init__(self, logger, loop, inflight, zmq_stream,
+                 metric_prefix='emitter'):
+        self.emitter = zmq_stream
+        self.logger = logger
+        self.loop = loop
+        self.inflight = inflight
+        self.metric_prefix = metric_prefix
+        self.output_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+
+    @gen.coroutine
+    def close(self):
+        self.state = CLOSING
+        self.logger.debug("Flushing send queue")
+        self.emitter.flush()
+
+    @gen.coroutine
+    def emit(self, msg, timeout=None):
+        yield self.inflight.acquire(timeout)
+        self.logger.debug("Drain emitting")
+        if isinstance(msg, basestring):
+            msg = [msg]
+        # NOTE: this overwrites any current callback attached to the stream
+        self.emitter.send_multipart(msg, callback=self.onTrack,
+                                    copy=False, track=True)
+
+    @gen.coroutine
+    def onTrack(self, frames, msg_tracker, retry_timeout=INITIAL_TIMEOUT):
+        """Callback interface for when messages are delivered.
+        """
+        # If the handler triggers an exception, pyzmq will disable it
+        # Here we catch any exception and just log it, so that processing
+        # can continue
+        try:
+            # This should always be an instance of zmq.MessageTracker
+            # or our queue will starve
+            if msg_tracker is None:
+                log_msg = 'No MessageTracker received for a sent message'
+                self.logger.warning(log_msg)
+            else:
+                if msg_tracker.done:
+                    self.logger.debug("Sender received message ack")
+                    self.inflight.release()
+                else:
+                    self.logger.debug("Sender MessageTracker incomplete")
+                    # Retry with exponential backoff
+                    self.loop.call_later(retry_timeout.total_seconds(),
+                                         self.onTrack,
+                                         frames,
+                                         msg_tracker,
+                                         retry_timeout=min(retry_timeout*2,
+                                                           MAX_TIMEOUT))
+        except Exception as err:
+            statsd.increment('rf.exception_count', tags=[
+                self.sender_tag,
+                'exception:%s.%s' % (err.__class__.__module__,
+                                     err.__class__.__name__),
+            ])
+            self.logger.exception(err)
+
+
 # Source implementations
 @implementer(ISource)
 class StreamSource(object):
