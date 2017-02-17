@@ -22,6 +22,7 @@ requirements = [
     'setuptools',
     'tornado',
     'six',
+    'zope.interface',
 ]
 if sys.version < '3':
     requirements.append('unicodecsv')
