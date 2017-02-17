@@ -1,11 +1,12 @@
 import sys
 
 import zmq
+from confluent_kafka import Consumer
 from cs.eyrie import Vassal, ZMQChannel, script_main
 from cs.eyrie.interfaces import IKafka
 from cs.eyrie.transistor import (
     CLOSED,
-    StreamSource, ZMQSource,
+    RDKafkaSource, StreamSource, ZMQSource,
     Transistor,
     StreamDrain, ZMQDrain,
 )
@@ -32,6 +33,7 @@ class Actuator(Vassal):
     title = "(rf:actuator)"
     app_name = 'rf'
     args = [
+        # ZMQ options
         (
             ('--bind-input',),
             dict(
@@ -48,11 +50,38 @@ class Actuator(Vassal):
                 action='store_true',
             )
         ),
+        # Kafka options
+        (
+            ('--bootstrap-servers',),
+            dict(
+                help="Initial list of Kafka brokers",
+                required=False,
+                default='127.0.0.1:9092',
+            )
+        ),
+        (
+            ('--consumer-group',),
+            dict(
+                help="Kafka consumer group name",
+                required=False,
+            )
+        ),
+        (
+            ('--offset-reset',),
+            dict(
+                help="Action to take when there is no initial offset in offset store or the desired offset is out of range",
+                required=False,
+                choices=['smallest', 'largest'],
+                default='largest',
+            )
+        ),
+        # Base options
         (
             ('--input',),
             dict(
                 help="Source to be used as input",
                 required=True,
+                nargs='+',
             )
         ),
         (
@@ -96,6 +125,35 @@ class Actuator(Vassal):
         super(Actuator, self).__init__(**kwargs)
         self.transistor = self.init_transistor(**kwargs)
 
+    def init_kafka_source(self, **kwargs):
+        return RDKafkaSource(
+            self.logger,
+            self.loop,
+            kwargs['gate'],
+            Consumer({
+                'api.version.request': True,
+                'bootstrap.servers': kwargs['bootstrap_servers'],
+                #'debug': 'all',
+                'default.topic.config': {
+                    'auto.offset.reset': kwargs['offset_reset'],
+                    'enable.auto.commit': True,
+                    'offset.store.method': 'broker',
+                    'produce.offset.report': True,
+                },
+                'enable.partition.eof': False,
+                # The lambda is necessary to return control to the main Tornado
+                # thread
+                'error_cb': lambda err: self.loop.add_callback(self.onKafkaError,
+                                                               err),
+                'group.id': kwargs['consumer_group'],
+                # See: https://github.com/edenhill/librdkafka/issues/437
+                'log.connection.close': False,
+                'max.in.flight': kwargs['inflight'],
+                'queue.buffering.max.ms': 1000,
+            }),
+            *kwargs['input']
+        )
+
     def init_stream_drain(self, **kwargs):
         return StreamDrain(
             self.logger,
@@ -120,6 +178,9 @@ class Actuator(Vassal):
             source = self.init_stream_source(**kwargs)
         elif '://' in kwargs['input'][0]:
             source = self.init_zmq_source(**kwargs)
+        else:
+            del self.channels['input']
+            source = self.init_kafka_source(**kwargs)
 
         if kwargs['output'] == '-':
             del self.channels['output']
@@ -179,6 +240,14 @@ class Actuator(Vassal):
     def join(self, timeout=None):
         yield self.transistor.join(timeout)
         yield self.terminate()
+
+    @gen.coroutine
+    def onKafkaError(self, err):
+        self.logger.error(err)
+        if IKafka.providedBy(self.transistor.drain):
+            self.transistor.drain.output_error.set()
+        if IKafka.providedBy(self.transistor.source):
+            self.transistor.source.input_error.set()
 
     @gen.coroutine
     def terminate(self):
