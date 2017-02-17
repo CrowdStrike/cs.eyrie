@@ -1,14 +1,14 @@
 import sys
 
 import zmq
-from confluent_kafka import Consumer
+from confluent_kafka import Consumer, Producer
 from cs.eyrie import Vassal, ZMQChannel, script_main
 from cs.eyrie.interfaces import IKafka
 from cs.eyrie.transistor import (
     CLOSED,
     RDKafkaSource, StreamSource, ZMQSource,
     Transistor,
-    StreamDrain, ZMQDrain,
+    RDKafkaDrain, StreamDrain, ZMQDrain,
 )
 from pyramid.path import DottedNameResolver
 from tornado import gen
@@ -125,6 +125,26 @@ class Actuator(Vassal):
         super(Actuator, self).__init__(**kwargs)
         self.transistor = self.init_transistor(**kwargs)
 
+    def init_kafka_drain(self, **kwargs):
+        return RDKafkaDrain(
+            self.logger,
+            self.loop,
+            Producer({
+                'api.version.request': True,
+                'bootstrap.servers': kwargs['bootstrap_servers'],
+                'default.topic.config': {'produce.offset.report': True},
+                # The lambda is necessary to return control to the main Tornado
+                # thread
+                'error_cb': lambda err: self.loop.add_callback(self.onKafkaError,
+                                                               err),
+                # See: https://github.com/edenhill/librdkafka/issues/437
+                'log.connection.close': False,
+                'queue.buffering.max.ms': 1000,
+                'queue.buffering.max.messages': kwargs['inflight'],
+            }),
+            kwargs['output'],
+        )
+
     def init_kafka_source(self, **kwargs):
         return RDKafkaSource(
             self.logger,
@@ -187,6 +207,9 @@ class Actuator(Vassal):
             drain = self.init_stream_drain(**kwargs)
         elif '://' in kwargs['output'][0]:
             drain = self.init_zmq_drain(**kwargs)
+        else:
+            del self.channels['output']
+            drain = self.init_kafka_drain(**kwargs)
 
         resolver = DottedNameResolver()
         transducer = resolver.maybe_resolve(kwargs['transducer'])
