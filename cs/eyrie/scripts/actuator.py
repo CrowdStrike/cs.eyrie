@@ -1,10 +1,11 @@
 import sys
 
-from cs.eyrie import Vassal, script_main
+import zmq
+from cs.eyrie import Vassal, ZMQChannel, script_main
 from cs.eyrie.interfaces import IKafka
 from cs.eyrie.transistor import (
     CLOSED,
-    StreamSource,
+    StreamSource, ZMQSource,
     Transistor,
     StreamDrain,
 )
@@ -17,10 +18,23 @@ from tornado.queues import Queue
 class Actuator(Vassal):
     channels = dict(
         Vassal.channels,
+        input=ZMQChannel(
+            # This is configured dynamically at runtime
+            endpoint=None,
+            socket_type=zmq.PULL,
+        ),
     )
     title = "(rf:actuator)"
     app_name = 'rf'
     args = [
+        (
+            ('--bind-input',),
+            dict(
+                help="Bind ZMQ input socket",
+                default=True,
+                action='store_true',
+            )
+        ),
         (
             ('--input',),
             dict(
@@ -91,6 +105,8 @@ class Actuator(Vassal):
         if kwargs['input'][0] == '-':
             del self.channels['input']
             source = self.init_stream_source(**kwargs)
+        elif '://' in kwargs['input'][0]:
+            source = self.init_zmq_source(**kwargs)
 
         if kwargs['output'] == '-':
             del self.channels['output']
@@ -105,6 +121,25 @@ class Actuator(Vassal):
             source,
             drain,
             transducer,
+        )
+
+    def init_zmq_source(self, **kwargs):
+        channel = ZMQChannel(**dict(
+            vars(self.channels['input']),
+            bind=kwargs['bind_input'],
+            endpoint=kwargs['input'][0],
+        ))
+        socket = self.context.socket(channel.socket_type)
+        socket.set_hwm(kwargs['inflight'])
+        if kwargs['bind_input']:
+            socket.bind(kwargs['input'][0])
+        else:
+            socket.connect(kwargs['input'][0])
+        return ZMQSource(
+            self.logger,
+            self.loop,
+            kwargs['gate'],
+            socket,
         )
 
     @gen.coroutine
