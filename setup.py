@@ -47,7 +47,7 @@ setup(
     install_requires=requirements,
     extras_require={
         'Dogpile':  ["dogpile.cache"],
-        'Kafka':  ["kafka-python", "kazoo", "gevent"],
+        'Kafka':  ["confluent-kafka", "kafka-python", "kazoo", "gevent"],
         'PostgreSQL':  ["python-dateutil", "sixfeetup.bowab", "zope.sqlalchemy"],
     },
     license="BSD",

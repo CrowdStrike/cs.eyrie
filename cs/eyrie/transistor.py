@@ -9,13 +9,15 @@ It is possible to pair a Kafka consumer with a ZMQ sender, or vice-versa, pair
 a ZMQ receiver with a Kafka producer. All communication is async, using Tornado
 queues throughout.
 """
+from datetime import datetime
 from os import linesep
 
 from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
-from cs.eyrie.interfaces import IDrain, ISource, ITransistor
+from cs.eyrie.interfaces import IDrain, IKafka, ISource, ITransistor
 from datadog import statsd
 from tornado import gen
 from tornado.locks import Event
+from tornado.queues import Queue
 from zope.interface import implementer
 
 
@@ -172,6 +174,102 @@ class Transistor(object):
 
 
 # Drain implementations
+@implementer(IDrain, IKafka)
+class RDKafkaDrain(object):
+    """Implementation of IDrain that produces to a Kafka topic using librdkafka
+    asynchronously. Backpressure is implemented with a tornado.queues.Queue.
+    Expects an instance of confluent_kafka.Producer as self.sender.
+    """
+
+    def __init__(self, logger, loop, inflight, producer, topic,
+                 metric_prefix='emitter'):
+        self.emitter = producer
+        self.logger = logger
+        self.loop = loop
+        self.loop.spawn_callback(self._poll)
+        self._completed = Queue()
+        self.inflight = inflight
+        self.metric_prefix = metric_prefix
+        self.output_error = Event()
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+        self.topic = topic
+        self.state = RUNNING
+
+    @gen.coroutine
+    def close(self, retry_timeout=INITIAL_TIMEOUT):
+        try:
+            self.state = CLOSING
+            begin = datetime.utcnow()
+            num_messages = len(self.emitter)
+            elapsed = datetime.utcnow() - begin
+            while num_messages > 0 and elapsed <= MAX_TIMEOUT:
+                self.logger.info("Flushing send queue in %s/%s: %d",
+                                 elapsed, MAX_TIMEOUT, num_messages)
+                self.emitter.poll(0)
+                num_messages = len(self.emitter)
+                elapsed = datetime.utcnow() - begin
+                retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
+                yield gen.sleep(retry_timeout.total_seconds())
+            else:
+                self.logger.error('Unable to flush messages; aborting')
+        finally:
+            self.state = CLOSED
+
+    @gen.coroutine
+    def emit(self, msg, timeout=None):
+        yield self.inflight.acquire(timeout)
+        self.logger.debug("Drain emitting")
+        self.emitter.produce(
+            self.topic, msg,
+            # This callback is executed in the librdkafka thread
+            callback=lambda err, kafka_msg: self._trampoline(err,
+                                                             kafka_msg),
+        )
+
+    @gen.coroutine
+    def _poll(self, retry_timeout=INITIAL_TIMEOUT):
+        """Infinite coroutine for draining the delivery report queue,
+        with exponential backoff.
+        """
+        try:
+            num_processed = self.emitter.poll(0)
+            if num_processed > 0:
+                self.logger.debug("Drain received ack for messages: %d",
+                                  num_processed)
+                retry_timeout = INITIAL_TIMEOUT
+            else:
+                self.logger.debug("Drain delivery report queue empty")
+                # Retry with exponential backoff
+                yield gen.sleep(retry_timeout.total_seconds())
+                retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
+        finally:
+            self.loop.spawn_callback(self._poll, retry_timeout)
+
+    @gen.coroutine
+    def onTrack(self, err, kafka_msg):
+        self.logger.debug('Received delivery notification: "%s", "%s"',
+                          err, kafka_msg)
+        if err:
+            self.logger.error('Error encountered, giving up: %s', err)
+            raise err
+        else:
+            self.inflight.release()
+
+    def _trampoline(self, err, kafka_msg):
+        # This is necessary, so that we trampoline from the librdkafka thread
+        # back to the main Tornado thread:
+        # add_callback() may be used to transfer control from other threads to
+        # the IOLoop's thread.
+        # It is safe to call this method from any thread at any time, except
+        # from a signal handler. Note that this is the only method in IOLoop
+        # that makes this thread-safety guarantee; all other interaction with
+        # the IOLoop must be done from that IOLoop's thread.
+        self.loop.add_callback(
+            self.onTrack, err, kafka_msg
+        )
+
+
 @implementer(IDrain)
 class StreamDrain(object):
     """Implementation of IDrain that writes to stdout.
