@@ -9,9 +9,12 @@ It is possible to pair a Kafka consumer with a ZMQ sender, or vice-versa, pair
 a ZMQ receiver with a Kafka producer. All communication is async, using Tornado
 queues throughout.
 """
+from os import linesep
+
 from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
-from cs.eyrie.interfaces import ITransistor
+from cs.eyrie.interfaces import IDrain, ITransistor
 from tornado import gen
+from tornado.locks import Event
 from zope.interface import implementer
 
 
@@ -148,3 +151,42 @@ class Transistor(object):
         finally:
             if respawn:
                 self.loop.spawn_callback(self.onDrain, retry_timeout)
+
+
+# Drain implementations
+@implementer(IDrain)
+class StreamDrain(object):
+    """Implementation of IDrain that writes to stdout.
+    """
+
+    def __init__(self, logger, loop, inflight, stream,
+                 metric_prefix='emitter'):
+        self.emitter = stream
+        self.logger = logger
+        self.loop = loop
+        self.inflight = inflight
+        self.metric_prefix = metric_prefix
+        self.output_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+
+    @gen.coroutine
+    def close(self):
+        self.state = CLOSING
+        self.logger.debug("Flushing send queue")
+        self.emitter.flush()
+
+    @gen.coroutine
+    def emit(self, msg, timeout=None):
+        with (yield self.inflight.acquire(timeout)):
+            self.logger.debug("Drain emitting")
+            self.emitter.write(msg)
+            if not msg.endswith(linesep):
+                self.emitter.write(linesep)
+
+    @gen.coroutine
+    def onTrack(self, *args):
+        """Callback interface for when messages are delivered.
+        """
+        pass
