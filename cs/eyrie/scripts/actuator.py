@@ -8,14 +8,13 @@ from cs.eyrie.interfaces import IKafka
 from cs.eyrie.transistor import (
     CLOSED,
     PailfileSource, RDKafkaSource, StreamSource, ZMQSource,
-    Transistor,
+    Gate, Transistor,
     RDKafkaDrain, StreamDrain, ZMQDrain,
 )
 from hadoop.io import SequenceFile
 from pyramid.path import DottedNameResolver
 from tornado import gen
 from tornado.locks import Semaphore
-from tornado.queues import Queue
 
 
 class Actuator(Vassal):
@@ -201,8 +200,25 @@ class Actuator(Vassal):
         )
 
     def init_transistor(self, **kwargs):
-        # The gate is shared between the transistor and source
-        kwargs['gate'] = Queue(kwargs['queued'])
+        if kwargs['output'] == '-':
+            del self.channels['output']
+            drain = self.init_stream_drain(**kwargs)
+        elif '://' in kwargs['output']:
+            drain = self.init_zmq_drain(**kwargs)
+        else:
+            del self.channels['output']
+            drain = self.init_kafka_drain(**kwargs)
+
+        # The gate "has" a drain;
+        # a source "has" a gate
+        resolver = DottedNameResolver()
+        transducer = resolver.maybe_resolve(kwargs['transducer'])
+        kwargs['gate'] = Gate(
+            self.logger,
+            self.loop,
+            drain,
+            transducer,
+        )
         if kwargs['input'][0] == '-':
             del self.channels['input']
             source = self.init_stream_source(**kwargs)
@@ -215,24 +231,12 @@ class Actuator(Vassal):
             del self.channels['input']
             source = self.init_kafka_source(**kwargs)
 
-        if kwargs['output'] == '-':
-            del self.channels['output']
-            drain = self.init_stream_drain(**kwargs)
-        elif '://' in kwargs['output'][0]:
-            drain = self.init_zmq_drain(**kwargs)
-        else:
-            del self.channels['output']
-            drain = self.init_kafka_drain(**kwargs)
-
-        resolver = DottedNameResolver()
-        transducer = resolver.maybe_resolve(kwargs['transducer'])
         return Transistor(
             self.logger,
             self.loop,
             kwargs['gate'],
             source,
             drain,
-            transducer,
         )
 
     def init_zmq_drain(self, **kwargs):

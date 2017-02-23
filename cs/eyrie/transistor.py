@@ -9,14 +9,15 @@ It is possible to pair a Kafka consumer with a ZMQ sender, or vice-versa, pair
 a ZMQ receiver with a Kafka producer. All communication is async, using Tornado
 queues throughout.
 """
-from collections import namedtuple
+from collections import deque, namedtuple
 from datetime import datetime
 from os import linesep
 
 from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
-from cs.eyrie.interfaces import IDrain, IKafka, ISource, ITransistor
+from cs.eyrie.interfaces import IDrain, IGate, IKafka, ISource, ITransistor
 from datadog import statsd
 from tornado import gen
+from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event
 from tornado.queues import Queue
 from zope.interface import implementer
@@ -36,6 +37,14 @@ KafkaMessage = namedtuple(
 )
 
 
+ThroughputSample = namedtuple(
+    'ThroughputSample', [
+        'timestamp',
+        'num_emitted',
+    ],
+)
+
+
 def get_last_element(msg):
     if isinstance(msg, (list, tuple)):
         return msg[-1]
@@ -44,57 +53,28 @@ def get_last_element(msg):
 
 @implementer(ITransistor)
 class Transistor(object):
-    """Implementation of ITransistor that handles all interaction with
-    the queue. This class is responsible for applying backpressure when
-    the configured emitter is slower than the collector.
+    """Implementation of ITransistor.
+    This class is responsible for shutting down in the face
+    of errors, and graceful termination on end of input.
     """
 
-    def __init__(self, logger, loop, queue, source, drain, transducer,
+    def __init__(self, logger, loop, gate, source, drain,
                  metric_prefix='transistor'):
         self.logger = logger
         self.loop = loop
-        self.gate = queue
-        # Queue's start with this set; we want to wait until we've started
-        # to receive input
-        self.gate._finished.clear()
+        self.gate = gate
         self.source = source
         self.drain = drain
-        # spawn_callback doesn't associate with the current stack context
-        self.loop.spawn_callback(self.onDrain)
         self.metric_prefix = metric_prefix
-        self.transducer = transducer
-        self._max_inflight = self.drain.inflight._value
         self.state = RUNNING
 
     @gen.coroutine
     def close(self, msg_prefix):
         try:
             self.state = CLOSING
-            msg = '%s; closing source queued: %d inflight: %d'
-            self.logger.error(msg,
-                              msg_prefix,
-                              self.gate.qsize(),
-                              self._max_inflight-self.drain.inflight._value)
+            self.logger.error('%s; closing source', msg_prefix)
             yield self.source.close()
-            if not self.gate.empty():
-                msg = '%s; draining queue queued: %d inflight: %d'
-                self.logger.error(msg,
-                                  msg_prefix,
-                                  self.gate.qsize(),
-                                  self._max_inflight-self.drain.inflight._value)
-                try:
-                    yield self.gate.join(MAX_TIMEOUT)
-                except gen.TimeoutError:
-                    msg = '%s; unable to drain queue queued: %d inflight: %d'
-                    self.logger.error(msg,
-                                      msg_prefix,
-                                      self.gate.qsize(),
-                                      self._max_inflight-self.drain.inflight._value)
-            msg = '%s; closing drain queued: %d inflight: %d'
-            self.logger.error(msg,
-                              msg_prefix,
-                              self.gate.qsize(),
-                              self._max_inflight-self.drain.inflight._value)
+            self.logger.error('%s; closing drain', msg_prefix)
             yield self.drain.close()
         except Exception as err:
             self.logger.exception(err)
@@ -104,7 +84,6 @@ class Transistor(object):
     @gen.coroutine
     def join(self, timeout=None):
         futures = dict(
-            queue=self.gate.join(timeout),
             eof=self.source.end_of_input.wait(timeout),
             input_error=self.source.input_error.wait(timeout),
             output_error=self.drain.output_error.wait(timeout),
@@ -137,41 +116,59 @@ class Transistor(object):
                     yield self.close('Error occurred in drain')
                     break
 
-    @gen.coroutine
-    def _emit(self, msg, retry_timeout=INITIAL_TIMEOUT):
-        while True:
-            try:
-                yield self.drain.emit(msg, retry_timeout)
-                break
-            except gen.TimeoutError:
-                log_msg = "Transistor waiting for drain, queued: %d inflight: %d"
-                self.logger.info(log_msg,
-                                 self.gate.qsize(),
-                                 self._max_inflight-self.drain.inflight._value)
-                retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
+
+@implementer(IGate)
+class Gate(object):
+    """Implementation of IGate that accepts a message and blocks
+    until the configured drain accepts it. Also reports throughput metrics.
+    """
+
+    def __init__(self, logger, loop, drain, transducer,
+                 metric_prefix='transistor', num_samples=3):
+        self.logger = logger
+        self.loop = loop
+        self.drain = drain
+        self.metric_prefix = metric_prefix
+        self.transducer = transducer
+        self.state = RUNNING
+        # callback_time is in milliseconds
+        self.throughput_pc = PeriodicCallback(self.onThroughput,
+                                              30 * 1000,
+                                              self.loop)
+        self.throughput_pc.start()
+        self.samples = deque(maxlen=num_samples)
+        self.samples.appendleft(ThroughputSample(timestamp=datetime.utcnow(),
+                                                 num_emitted=0))
+        self.num_emitted = 0
+
+    def onThroughput(self):
+        # Throughput measurements
+        now = datetime.utcnow()
+        current = ThroughputSample(timestamp=now, num_emitted=self.num_emitted)
+        deltas = [
+            current.timestamp - sample.timestamp
+            for sample in self.samples
+        ]
+        samples = [
+            '%s|%0.1f' % (
+                deltas[i],
+                (current.num_emitted-sample.num_emitted)/deltas[i].total_seconds()
+            )
+            for i, sample in enumerate(self.samples)
+        ]
+        self.samples.appendleft(current)
+        self.logger.info('Throughput samples: %s', ', '.join(samples))
+
+    def put_nowait(self, msg):
+        outgoing_msg = self.transducer(msg)
+        self.drain.emit_nowait(outgoing_msg)
+        self.num_emitted += 1
 
     @gen.coroutine
-    def onDrain(self, retry_timeout=INITIAL_TIMEOUT):
-        respawn = True
-        try:
-            log_msg = "Transistor waiting for input, queued: %d inflight: %d"
-            self.logger.info(log_msg,
-                             self.gate.qsize(),
-                             self._max_inflight-self.drain.inflight._value)
-            # This pauses execution in this coroutine until item(s)
-            # are present in the queue
-            incoming_msg = yield self.gate.get(retry_timeout)
-            retry_timeout = INITIAL_TIMEOUT
-            outgoing_msg = self.transducer(incoming_msg)
-            yield self._emit(outgoing_msg)
-            self.gate.task_done()
-        except gen.TimeoutError:
-            retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
-        except Exception as err:
-            self.logger.exception(err)
-        finally:
-            if respawn:
-                self.loop.spawn_callback(self.onDrain, retry_timeout)
+    def put(self, msg, retry_timeout=INITIAL_TIMEOUT):
+        outgoing_msg = self.transducer(msg)
+        yield self.drain.emit(outgoing_msg, retry_timeout)
+        self.num_emitted += 1
 
 
 # Drain implementations
