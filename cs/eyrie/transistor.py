@@ -9,6 +9,7 @@ It is possible to pair a Kafka consumer with a ZMQ sender, or vice-versa, pair
 a ZMQ receiver with a Kafka producer. All communication is async, using Tornado
 queues throughout.
 """
+from Queue import Full
 from collections import deque, namedtuple
 from datetime import datetime
 from os import linesep
@@ -179,14 +180,13 @@ class RDKafkaDrain(object):
     Expects an instance of confluent_kafka.Producer as self.sender.
     """
 
-    def __init__(self, logger, loop, inflight, producer, topic,
+    def __init__(self, logger, loop, producer, topic,
                  metric_prefix='emitter'):
         self.emitter = producer
         self.logger = logger
         self.loop = loop
         self.loop.spawn_callback(self._poll)
         self._completed = Queue()
-        self.inflight = inflight
         self.metric_prefix = metric_prefix
         self.output_error = Event()
         self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
@@ -214,16 +214,26 @@ class RDKafkaDrain(object):
         finally:
             self.state = CLOSED
 
-    @gen.coroutine
-    def emit(self, msg, timeout=None):
-        yield self.inflight.acquire(timeout)
+    def emit_nowait(self, msg):
         self.logger.debug("Drain emitting")
-        self.emitter.produce(
-            self.topic, msg,
-            # This callback is executed in the librdkafka thread
-            callback=lambda err, kafka_msg: self._trampoline(err,
-                                                             kafka_msg),
-        )
+        try:
+            self.emitter.produce(
+                self.topic, msg,
+                # This callback is executed in the librdkafka thread
+                callback=lambda err, kafka_msg: self._trampoline(err,
+                                                                 kafka_msg),
+            )
+        except BufferError:
+            raise Full
+
+    @gen.coroutine
+    def emit(self, msg, retry_timeout=INITIAL_TIMEOUT):
+        while True:
+            try:
+                self.emit_nowait(msg)
+            except Full:
+                yield gen.sleep(retry_timeout)
+                retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
 
     @gen.coroutine
     def _poll(self, retry_timeout=INITIAL_TIMEOUT):
@@ -245,14 +255,12 @@ class RDKafkaDrain(object):
             self.loop.spawn_callback(self._poll, retry_timeout)
 
     @gen.coroutine
-    def onTrack(self, err, kafka_msg):
+    def _on_track(self, err, kafka_msg):
         self.logger.debug('Received delivery notification: "%s", "%s"',
                           err, kafka_msg)
         if err:
             self.logger.error('Error encountered, giving up: %s', err)
             raise err
-        else:
-            self.inflight.release()
 
     def _trampoline(self, err, kafka_msg):
         # This is necessary, so that we trampoline from the librdkafka thread
@@ -264,7 +272,7 @@ class RDKafkaDrain(object):
         # that makes this thread-safety guarantee; all other interaction with
         # the IOLoop must be done from that IOLoop's thread.
         self.loop.add_callback(
-            self.onTrack, err, kafka_msg
+            self._on_track, err, kafka_msg
         )
 
 
@@ -273,12 +281,11 @@ class StreamDrain(object):
     """Implementation of IDrain that writes to stdout.
     """
 
-    def __init__(self, logger, loop, inflight, stream,
+    def __init__(self, logger, loop, stream,
                  metric_prefix='emitter'):
         self.emitter = stream
         self.logger = logger
         self.loop = loop
-        self.inflight = inflight
         self.metric_prefix = metric_prefix
         self.output_error = Event()
         self.state = RUNNING
