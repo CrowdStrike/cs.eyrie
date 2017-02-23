@@ -374,9 +374,9 @@ class PailfileSource(object):
     """Implementation of ISource that reads data from a Hadoop pailfile.
     """
 
-    def __init__(self, logger, loop, queue, sequence_reader,
+    def __init__(self, logger, loop, gate, sequence_reader,
                  metric_prefix='source', infinite=False):
-        self.gate = queue
+        self.gate = gate
         self.collector = sequence_reader
         self.logger = logger
         self.loop = loop
