@@ -428,9 +428,11 @@ class RDKafkaSource(object):
     """Implementation of ISource that consumes messages from a Kafka topic.
     """
 
-    def __init__(self, logger, loop, queue, consumer,
+    max_unyielded = 100000
+
+    def __init__(self, logger, loop, gate, consumer,
                  *topics, **kwargs):
-        self.gate = queue
+        self.gate = gate
         self.collector = consumer
         self.logger = logger
         self.loop = loop
@@ -440,13 +442,8 @@ class RDKafkaSource(object):
         self.state = RUNNING
         self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
                                             self.__class__.__name__)
-        self.loop.add_callback(self.onInput)
+        self.loop.spawn_callback(self.onInput)
         self.collector.subscribe(list(topics))
-
-    def _trampoline(self, frames):
-        """Bounce incoming messages to be handled properly by the IOLoop.
-        """
-        self.loop.add_callback(self.onInput, frames)
 
     @gen.coroutine
     def close(self):
@@ -460,37 +457,47 @@ class RDKafkaSource(object):
         with exponential backoff.
         """
         respawn = True
-        try:
-            msg = self.collector.poll(0)
-            if msg is not None:
-                err = msg.error()
-                if not err:
-                    retry_timeout = INITIAL_TIMEOUT
-                    yield self.gate.put(
-                        KafkaMessage(
+        iterations = 0
+        while True:
+            iterations += 1
+            try:
+                msg = self.collector.poll(0)
+                if msg is not None:
+                    err = msg.error()
+                    if not err:
+                        retry_timeout = INITIAL_TIMEOUT
+                        kafka_msg = KafkaMessage(
                             msg.key(),
                             msg.offset(),
                             msg.partition(),
                             msg.topic(),
                             msg.value(),
                         )
-                    )
+                        self.gate.put_nowait(kafka_msg)
+                    else:
+                        retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
+                        self.logger.exception(err)
+                        self.input_error.set()
+                        respawn = False
                 else:
                     retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
-                    self.logger.exception(err)
-                    self.input_error.set()
-            else:
-                retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
-                self.logger.debug('No message, delaying: %s', retry_timeout)
-        except Exception as err:
-            self.logger.exception(err)
-            self.input_error.set()
-            respawn = False
-        finally:
-            if respawn:
-                self.loop.call_later(retry_timeout.total_seconds(),
-                                     self.onInput,
-                                     retry_timeout)
+                    self.logger.debug('No message, delaying: %s', retry_timeout)
+            except Full:
+                self.logger.debug('Gate queue full; yielding')
+                yield self.gate.put(kafka_msg)
+            except Exception as err:
+                self.logger.exception(err)
+                self.input_error.set()
+                respawn = False
+            finally:
+                if respawn:
+                    if retry_timeout > INITIAL_TIMEOUT:
+                        yield gen.sleep(retry_timeout.total_seconds())
+                    elif iterations > self.max_unyielded:
+                        yield gen.moment
+                        iterations = 0
+                else:
+                    break
 
 
 @implementer(ISource)
