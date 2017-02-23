@@ -505,9 +505,9 @@ class StreamSource(object):
     """Implementation of ISource that reads data from stdin.
     """
 
-    def __init__(self, logger, loop, queue, stream,
+    def __init__(self, logger, loop, gate, stream,
                  metric_prefix='source'):
-        self.gate = queue
+        self.gate = gate
         self.collector = stream
         self.logger = logger
         self.loop = loop
