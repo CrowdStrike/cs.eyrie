@@ -551,25 +551,37 @@ class ZMQSource(object):
     """Implementation of ISource that receives messages from a ZMQ socket.
     """
 
-    def __init__(self, logger, loop, queue, zmq_stream,
+    max_unyielded = 100000
+
+    def __init__(self, logger, loop, queue, zmq_socket,
                  metric_prefix='source'):
         self.gate = queue
-        self.collector = zmq_stream
+        self.collector = zmq_socket
         self.logger = logger
         self.loop = loop
         self.metric_prefix = metric_prefix
         self.end_of_input = Event()
         self.input_error = Event()
         self.state = RUNNING
+        self._readable = Event()
         self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
                                             self.__class__.__name__)
-        # NOTE: this overwrites any current callback attached to the stream
-        self.collector.on_recv(self._trampoline)
+        self.loop.spawn_callback(self.onInput)
 
-    def _trampoline(self, frames):
-        """Bounce incoming messages to be handled properly by the IOLoop.
-        """
-        self.loop.add_callback(self.onInput, frames)
+    def _handle_events(self, fd, events):
+        if events & self.loop.ERROR:
+            self.logger.error('Error polling socket for writability')
+        elif events & self.loop.READ:
+            self.loop.remove_handler(self.collector)
+            self._readable.set()
+
+    @gen.coroutine
+    def _poll(self, retry_timeout=INITIAL_TIMEOUT):
+        self.loop.add_handler(self.collector,
+                              self._handle_events,
+                              self.loop.READ)
+        yield self._readable.wait()
+        self._readable.clear()
 
     @gen.coroutine
     def close(self):
@@ -578,11 +590,34 @@ class ZMQSource(object):
         self.collector.close()
 
     @gen.coroutine
-    def onInput(self, frames):
+    def onInput(self):
         # This will apply backpressure by not accepting input
         # until there is space in the queue.
         # This works because pyzmq uses Tornado to read from the socket;
         # reading from the socket will be blocked while the queue is full.
-        yield self.gate.put(frames)
-        statsd.increment('%s.queued' % self.metric_prefix,
-                         tags=[self.sender_tag])
+        respawn = True
+        iterations = 0
+        while True:
+            iterations += 1
+            try:
+                msg = self.collector.recv_multipart(zmq.NOBLOCK)
+                self.gate.put_nowait(msg)
+            except zmq.Again:
+                yield self._poll()
+            except Full:
+                self.logger.debug('Gate queue full; yielding')
+                yield self.gate.put(msg)
+            except Exception as err:
+                self.logger.exception(err)
+                self.input_error.set()
+                respawn = False
+            else:
+                statsd.increment('%s.queued' % self.metric_prefix,
+                                 tags=[self.sender_tag])
+            finally:
+                if respawn:
+                    if iterations > self.max_unyielded:
+                        yield gen.moment
+                        iterations = 0
+                else:
+                    break
