@@ -298,19 +298,15 @@ class StreamDrain(object):
         self.logger.debug("Flushing send queue")
         self.emitter.flush()
 
-    @gen.coroutine
-    def emit(self, msg, timeout=None):
-        with (yield self.inflight.acquire(timeout)):
-            self.logger.debug("Drain emitting")
-            self.emitter.write(msg)
-            if not msg.endswith(linesep):
-                self.emitter.write(linesep)
+    def emit_nowait(self, msg):
+        self.logger.debug("Drain emitting")
+        self.emitter.write(msg)
+        if not msg.endswith(linesep):
+            self.emitter.write(linesep)
 
     @gen.coroutine
-    def onTrack(self, *args):
-        """Callback interface for when messages are delivered.
-        """
-        pass
+    def emit(self, msg, timeout=None):
+        self.emit_nowait(msg)
 
 
 @implementer(IDrain)

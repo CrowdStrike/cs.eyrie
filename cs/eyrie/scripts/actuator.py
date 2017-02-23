@@ -187,7 +187,6 @@ class Actuator(Vassal):
         return StreamDrain(
             self.logger,
             self.loop,
-            Semaphore(kwargs['inflight']),
             sys.stdout,
         )
 
