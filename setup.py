@@ -22,6 +22,7 @@ requirements = [
     'setuptools',
     'tornado',
     'six',
+    'zope.interface',
 ]
 if sys.version < '3':
     requirements.append('unicodecsv')
@@ -46,7 +47,7 @@ setup(
     install_requires=requirements,
     extras_require={
         'Dogpile':  ["dogpile.cache"],
-        'Kafka':  ["kafka-python", "kazoo", "gevent"],
+        'Kafka':  ["confluent-kafka", "kafka-python", "kazoo", "gevent"],
         'PostgreSQL':  ["python-dateutil", "sixfeetup.bowab", "zope.sqlalchemy"],
     },
     license="BSD",
@@ -66,6 +67,7 @@ setup(
     entry_points={
         'paste.app_factory': 'main = cs.eyrie:main',
         'console_scripts': [
+            'actuator = cs.eyrie.scripts.actuator:main',
             'eyrie_logger = cs.eyrie.scripts.logger:main',
             'eyrie_injector = cs.eyrie.scripts.log_injector:main',
             'kafka_consumer = cs.eyrie.scripts.kafka_consumer:main [Kafka]',

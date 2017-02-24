@@ -3,24 +3,25 @@
 # See the file LICENSE in the main directory for details
 from __future__ import absolute_import
 
-from abc import ABCMeta
-from abc import abstractmethod
 try:
     from ConfigParser import RawConfigParser
 except ImportError:
     from configparser import RawConfigParser
+
 import argparse
-from collections import namedtuple
-from copy import copy
-from functools import partial
 import logging
-from logging.config import dictConfig
 import multiprocessing
 import os
 import pickle
 import signal
 import sys
 import traceback
+from abc import ABCMeta, abstractmethod
+from collections import namedtuple
+from copy import copy
+from datetime import timedelta
+from functools import partial
+from logging.config import dictConfig
 
 from pyramid.path import DottedNameResolver
 from pyramid.settings import asbool
@@ -39,6 +40,8 @@ except ImportError:
     GenericMemcachedBackend = None
 
 
+INITIAL_TIMEOUT = timedelta(milliseconds=10)
+MAX_TIMEOUT = timedelta(seconds=45)
 LOGGING_PORT = 16385
 LOGGING_ENDPOINT = 'tcp://127.0.0.1:{}'.format(LOGGING_PORT)
 ROUTER_OUTBOUND = 'ipc:///tmp/kafka_consume.ipc'
