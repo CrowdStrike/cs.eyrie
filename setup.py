@@ -51,6 +51,10 @@ setup(
         'Kafka':  ["confluent-kafka", "kafka-python", "kazoo", "gevent"],
         'PostgreSQL':  ["python-dateutil", "sixfeetup.bowab", "zope.sqlalchemy"],
     },
+    setup_requires=[
+        'setuptools_scm',
+        'wheel',
+    ],
     license="BSD",
     zip_safe=False,
     keywords='zmq async tornado postgresql',
