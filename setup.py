@@ -20,6 +20,7 @@ requirements = [
     'pyzmq',
     'setproctitle',
     'setuptools',
+    'setuptools_scm',
     'tornado',
     'six',
     'zope.interface',
@@ -35,7 +36,7 @@ test_requirements = [
 
 setup(
     name='cs.eyrie',
-    version='0.5.6',
+    use_scm_version=True,
     description='Primitives for building ZMQ pipelines.',
     long_description=readme + '\n\n' + history,
     author='CrowdStrike, Inc.',
