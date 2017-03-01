@@ -102,15 +102,6 @@ class Actuator(Vassal):
             )
         ),
         (
-            ('--queued',),
-            dict(
-                help="Maximum number of messages to queue",
-                required=False,
-                default=1000,
-                type=int,
-            )
-        ),
-        (
             ('--transducer',),
             dict(
                 help="Dotted-path to function to transform input messages to output",
