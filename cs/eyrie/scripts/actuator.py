@@ -39,7 +39,7 @@ class Actuator(Vassal):
             ('--bind-input',),
             dict(
                 help="Bind ZMQ input socket",
-                default=True,
+                default=False,
                 action='store_true',
             )
         ),
