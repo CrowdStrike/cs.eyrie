@@ -61,7 +61,7 @@ class Actuator(Vassal):
             )
         ),
         (
-            ('--consumer-group',),
+            ('--group-name',),
             dict(
                 help="Kafka consumer group name",
                 required=False,
@@ -138,6 +138,7 @@ class Actuator(Vassal):
                 # thread
                 'error_cb': lambda err: self.loop.add_callback(self.onKafkaError,
                                                                err),
+                'group.id': kwargs['group_name'],
                 # See: https://github.com/edenhill/librdkafka/issues/437
                 'log.connection.close': False,
                 'queue.buffering.max.ms': 1000,
@@ -166,7 +167,7 @@ class Actuator(Vassal):
                 # thread
                 'error_cb': lambda err: self.loop.add_callback(self.onKafkaError,
                                                                err),
-                'group.id': kwargs['consumer_group'],
+                'group.id': kwargs['group_name'],
                 # See: https://github.com/edenhill/librdkafka/issues/437
                 'log.connection.close': False,
                 'max.in.flight': kwargs['inflight'],
