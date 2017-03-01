@@ -51,6 +51,24 @@ class Actuator(Vassal):
                 action='store_true',
             )
         ),
+        (
+            ('--input-socket-type',),
+            dict(
+                help="Which ZMQ socket type to use for input",
+                required=False,
+                choices=['pull', 'sub'],
+                default='pull',
+            )
+        ),
+        (
+            ('--output-socket-type',),
+            dict(
+                help="Which ZMQ socket type to use for output",
+                required=False,
+                choices=['push', 'pub'],
+                default='push',
+            )
+        ),
         # Kafka options
         (
             ('--bootstrap-servers',),
@@ -235,6 +253,7 @@ class Actuator(Vassal):
             vars(self.channels['output']),
             bind=kwargs['bind_output'],
             endpoint=kwargs['output'],
+            socket_type=getattr(zmq, kwargs['output_socket_type'].upper()),
         ))
         socket = self.context.socket(channel.socket_type)
         socket.set_hwm(kwargs['inflight'])
@@ -253,8 +272,11 @@ class Actuator(Vassal):
             vars(self.channels['input']),
             bind=kwargs['bind_input'],
             endpoint=kwargs['input'][0],
+            socket_type=getattr(zmq, kwargs['input_socket_type'].upper()),
         ))
         socket = self.context.socket(channel.socket_type)
+        if channel.socket_type == zmq.SUB:
+            socket.setsockopt(zmq.SUBSCRIBE, '')
         socket.set_hwm(kwargs['inflight'])
         if kwargs['bind_input']:
             socket.bind(kwargs['input'][0])
