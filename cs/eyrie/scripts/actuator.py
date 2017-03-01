@@ -172,7 +172,7 @@ class Actuator(Vassal):
             self.logger,
             self.loop,
             kwargs['gate'],
-            SequenceFile.Reader(kwargs['input']),
+            SequenceFile.Reader(kwargs['input'][0]),
         )
 
     def init_stream_drain(self, **kwargs):
