@@ -145,7 +145,7 @@ class Actuator(Vassal):
             self.loop,
             Producer({
                 'api.version.request': True,
-                'bootstrap.servers': kwargs['bootstrap_servers'],
+                'bootstrap.servers': ','.join(kwargs['bootstrap_servers']),
                 'default.topic.config': {'produce.offset.report': True},
                 # The lambda is necessary to return control to the main Tornado
                 # thread
@@ -167,7 +167,7 @@ class Actuator(Vassal):
             kwargs['gate'],
             Consumer({
                 'api.version.request': True,
-                'bootstrap.servers': kwargs['bootstrap_servers'],
+                'bootstrap.servers': ','.join(kwargs['bootstrap_servers']),
                 #'debug': 'all',
                 'default.topic.config': {
                     'auto.offset.reset': kwargs['offset_reset'],
