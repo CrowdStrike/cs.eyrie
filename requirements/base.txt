@@ -4,6 +4,7 @@ backports-abc==0.5
 certifi==2017.1.23
 cffi==1.9.1
 cryptography==1.7.2
+datadog==0.15.0
 enum34==1.1.6
 hupper==0.4.2
 idna==2.3
