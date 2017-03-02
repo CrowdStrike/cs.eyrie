@@ -11,7 +11,10 @@ from cs.eyrie.transistor import (
     Gate, Transistor,
     RDKafkaDrain, StreamDrain, ZMQDrain,
 )
-from hadoop.io import SequenceFile
+try:
+    from hadoop.io import SequenceFile
+except ImportError:
+    SequenceFile = None
 from pyramid.path import DottedNameResolver
 from tornado import gen
 from tornado.locks import Semaphore
