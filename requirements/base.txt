@@ -1,6 +1,6 @@
 PasteDeploy==1.5.2
 WebOb==1.7.1
-backports==abc==0.5
+backports-abc==0.5
 certifi==2017.1.23
 cffi==1.9.1
 cryptography==1.7.2
