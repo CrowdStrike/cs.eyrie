@@ -93,7 +93,9 @@ class Vassal(object):
 
         app_settings = get_appsettings(self.config_uri, name=self.app_name)
         self.config = Configurator(settings=app_settings)
-        self.curr_proc.authkey = self.config.registry.settings['eyrie.authkey'].encode('utf8')
+        authkey = self.config.registry.settings.get('eyrie.authkey')
+        if authkey:
+            self.curr_proc.authkey = authkey.encode('utf8')
 
         if kwargs.get('init_db', False):
             self.init_db()
