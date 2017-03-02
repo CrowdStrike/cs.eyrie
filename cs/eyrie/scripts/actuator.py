@@ -79,6 +79,7 @@ class Actuator(Vassal):
                 help="Initial list of Kafka brokers",
                 required=False,
                 default='127.0.0.1:9092',
+                nargs='+',
             )
         ),
         (
