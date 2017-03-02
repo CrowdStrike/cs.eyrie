@@ -35,7 +35,7 @@ class Actuator(Vassal):
         ),
     )
     title = "(rf:actuator)"
-    app_name = 'rf'
+    app_name = 'actuator'
     args = [
         # ZMQ options
         (
