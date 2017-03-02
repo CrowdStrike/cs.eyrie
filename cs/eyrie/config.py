@@ -35,9 +35,9 @@ try:
     from dogpile.cache.api import CacheBackend, NO_VALUE
     from dogpile.cache.backends.memcached import GenericMemcachedBackend
 except ImportError:
-    CacheBackend = None
+    CacheBackend = object
     NO_VALUE = None
-    GenericMemcachedBackend = None
+    GenericMemcachedBackend = object
 
 
 INITIAL_TIMEOUT = timedelta(milliseconds=10)
