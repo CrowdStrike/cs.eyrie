@@ -6,7 +6,7 @@ from confluent_kafka import Consumer, Producer
 from cs.eyrie import Vassal, ZMQChannel, script_main
 from cs.eyrie.interfaces import IKafka
 from cs.eyrie.transistor import (
-    CLOSED,
+    CLOSED, TRANSIENT_ERRORS,
     PailfileSource, RDKafkaSource, StreamSource, ZMQSource,
     Gate, Transistor,
     RDKafkaDrain, StreamDrain, ZMQDrain,
@@ -300,11 +300,14 @@ class Actuator(Vassal):
 
     @gen.coroutine
     def onKafkaError(self, err):
-        self.logger.error(err)
-        if IKafka.providedBy(self.transistor.drain):
-            self.transistor.drain.output_error.set()
-        if IKafka.providedBy(self.transistor.source):
-            self.transistor.source.input_error.set()
+        if err.code() in TRANSIENT_ERRORS:
+            self.logger.warning('Ignoring: %s', err)
+        else:
+            self.logger.error(err)
+            if IKafka.providedBy(self.transistor.drain):
+                self.transistor.drain.output_error.set()
+            if IKafka.providedBy(self.transistor.source):
+                self.transistor.source.input_error.set()
 
     @gen.coroutine
     def terminate(self):
