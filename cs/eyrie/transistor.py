@@ -15,6 +15,7 @@ from datetime import datetime
 from os import linesep
 
 import zmq
+from confluent_kafka import KafkaError
 from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
 from cs.eyrie.interfaces import IDrain, IGate, IKafka, ISource, ITransistor
 from datadog import statsd
@@ -26,6 +27,8 @@ from zope.interface import implementer
 
 
 RUNNING, CLOSING, CLOSED = range(3)
+# See: https://github.com/confluentinc/confluent-kafka-python/issues/147
+TRANSIENT_ERRORS = set([KafkaError._ALL_BROKERS_DOWN, KafkaError._TRANSPORT])
 
 
 KafkaMessage = namedtuple(
@@ -181,14 +184,15 @@ class RDKafkaDrain(object):
     Expects an instance of confluent_kafka.Producer as self.sender.
     """
 
-    def __init__(self, logger, loop, producer, topic,
-                 metric_prefix='emitter'):
+    def __init__(self, logger, loop, producer, topic, **kwargs):
         self.emitter = producer
         self.logger = logger
         self.loop = loop
         self.loop.spawn_callback(self._poll)
         self._completed = Queue()
-        self.metric_prefix = metric_prefix
+        self._ignored_errors = set(kwargs.get('ignored_errors', []))
+        self._ignored_errors.update(TRANSIENT_ERRORS)
+        self.metric_prefix = kwargs.get('metric_prefix', 'emitter')
         self.output_error = Event()
         self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
                                             self.__class__.__name__)
@@ -260,8 +264,11 @@ class RDKafkaDrain(object):
         self.logger.debug('Received delivery notification: "%s", "%s"',
                           err, kafka_msg)
         if err:
-            self.logger.error('Error encountered, giving up: %s', err)
-            raise err
+            if err.code() in self._ignored_errors:
+                self.logger.warning('Ignoring error: %s', err)
+            else:
+                self.logger.error('Error encountered, giving up: %s', err)
+                self.output_error.set()
 
     def _trampoline(self, err, kafka_msg):
         # This is necessary, so that we trampoline from the librdkafka thread
@@ -444,6 +451,8 @@ class RDKafkaSource(object):
                                             self.__class__.__name__)
         self.loop.spawn_callback(self.onInput)
         self.collector.subscribe(list(topics))
+        self._ignored_errors = set(kwargs.get('ignored_errors', []))
+        self._ignored_errors.update(TRANSIENT_ERRORS)
 
     @gen.coroutine
     def close(self):
@@ -474,6 +483,8 @@ class RDKafkaSource(object):
                             msg.value(),
                         )
                         self.gate.put_nowait(kafka_msg)
+                    elif err.code() in self._ignored_errors:
+                        self.logger.warning('Ignoring error: %s', err)
                     else:
                         retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
                         self.logger.exception(err)
