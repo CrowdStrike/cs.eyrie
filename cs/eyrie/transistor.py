@@ -166,14 +166,18 @@ class Gate(object):
 
     def put_nowait(self, msg):
         outgoing_msg = self.transducer(msg)
-        self.drain.emit_nowait(outgoing_msg)
         self.num_emitted += 1
+        if outgoing_msg is None:
+            self.logger.debug('No outgoing message; dropping')
+        self.drain.emit_nowait(outgoing_msg)
 
     @gen.coroutine
     def put(self, msg, retry_timeout=INITIAL_TIMEOUT):
         outgoing_msg = self.transducer(msg)
-        yield self.drain.emit(outgoing_msg, retry_timeout)
         self.num_emitted += 1
+        if outgoing_msg is None:
+            self.logger.debug('No outgoing message; dropping')
+        yield self.drain.emit(outgoing_msg, timeout)
 
 
 # Drain implementations
