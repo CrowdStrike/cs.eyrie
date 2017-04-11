@@ -130,6 +130,15 @@ class Actuator(Vassal):
                 default='cs.eyrie.transistor.get_last_element',
             )
         ),
+        (
+            ('--transducer-config',),
+            dict(
+                help="Arguments passed to transducer at startup",
+                default=[],
+                required=False,
+                nargs='*',
+            )
+        ),
     ]
 
     def __init__(self, **kwargs):
@@ -226,6 +235,8 @@ class Actuator(Vassal):
         # a source "has" a gate
         resolver = DottedNameResolver()
         transducer = resolver.maybe_resolve(kwargs['transducer'])
+        if kwargs['transducer_config']:
+            transducer = transducer(*kwargs['transducer_config'])
         kwargs['gate'] = Gate(
             self.logger,
             self.loop,
