@@ -124,6 +124,14 @@ class Actuator(Vassal):
             )
         ),
         (
+            ('--partition-strategy',),
+            dict(
+                help="Partition assignment strategy",
+                choices=['range', 'roundrobin'],
+                default='roundrobin',
+            )
+        ),
+        (
             ('--transducer',),
             dict(
                 help="Dotted-path to function to transform input messages to output",
@@ -184,6 +192,7 @@ class Actuator(Vassal):
                 # See: https://github.com/edenhill/librdkafka/issues/437
                 'log.connection.close': False,
                 'max.in.flight': kwargs['inflight'],
+                'partition.assignment.strategy': kwargs['partition_strategy'],
                 'queue.buffering.max.ms': 1000,
             }),
             *kwargs['input']
