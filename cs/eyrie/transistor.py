@@ -174,6 +174,9 @@ class Gate(object):
         outgoing_msg = self.transducer(msg)
         yield self.drain.emit(outgoing_msg, retry_timeout)
         self.num_emitted += 1
+        if outgoing_msg is None:
+            self.logger.debug('No outgoing message; dropping')
+        yield self.drain.emit(outgoing_msg, retry_timeout)
 
 
 # Drain implementations
