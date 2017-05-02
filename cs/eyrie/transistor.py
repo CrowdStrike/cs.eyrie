@@ -169,7 +169,8 @@ class Gate(object):
         self.num_emitted += 1
         if outgoing_msg is None:
             self.logger.debug('No outgoing message; dropping')
-        self.drain.emit_nowait(outgoing_msg)
+        else:
+            self.drain.emit_nowait(outgoing_msg)
 
     @gen.coroutine
     def put(self, msg, retry_timeout=INITIAL_TIMEOUT):
@@ -177,7 +178,8 @@ class Gate(object):
         self.num_emitted += 1
         if outgoing_msg is None:
             self.logger.debug('No outgoing message; dropping')
-        yield self.drain.emit(outgoing_msg, retry_timeout)
+        else:
+            yield self.drain.emit(outgoing_msg, retry_timeout)
 
 
 # Drain implementations
