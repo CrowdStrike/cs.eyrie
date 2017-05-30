@@ -406,8 +406,7 @@ class PailfileSource(object):
     def close(self):
         self.state = CLOSING
         self.logger.warning('Closing source')
-        if not self.collector.closed():
-            self.collector.close()
+        self.collector.close()
 
     @gen.coroutine
     def onInput(self):
