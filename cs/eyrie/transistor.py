@@ -243,7 +243,7 @@ class RDKafkaDrain(object):
             try:
                 self.emit_nowait(msg)
             except Full:
-                yield gen.sleep(retry_timeout)
+                yield gen.sleep(retry_timeout.total_seconds())
                 retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
 
     @gen.coroutine
