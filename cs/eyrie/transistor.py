@@ -22,7 +22,7 @@ from datadog import statsd
 from tornado import gen
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event
-from tornado.queues import Queue
+from tornado.queues import Queue, QueueEmpty, QueueFull
 from zope.interface import implementer
 
 
@@ -183,6 +183,40 @@ class Gate(object):
 
 
 # Drain implementations
+@implementer(IDrain)
+class QueueDrain(object):
+    """Implementation of IDrain that writes to a tornado.queues.Queue.
+    """
+
+    def __init__(self, logger, loop, queue,
+                 metric_prefix='emitter'):
+        self.emitter = queue
+        self.logger = logger
+        self.loop = loop
+        self.metric_prefix = metric_prefix
+        self.output_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+
+    @gen.coroutine
+    def close(self):
+        self.state = CLOSING
+        self.logger.debug("Flushing send queue")
+        self.emitter.flush()
+
+    def emit_nowait(self, msg):
+        self.logger.debug("Drain emitting")
+        try:
+            self.emitter.put_nowait(msg)
+        except QueueFull:
+            raise Full
+
+    @gen.coroutine
+    def emit(self, msg, timeout=None):
+        yield self.emitter.put(msg, timeout)
+
+
 @implementer(IDrain, IKafka)
 class RDKafkaDrain(object):
     """Implementation of IDrain that produces to a Kafka topic using librdkafka
@@ -431,6 +465,53 @@ class PailfileSource(object):
             self.input_error.set()
             respawn = False
         finally:
+            if respawn:
+                self.loop.spawn_callback(self.onInput)
+
+
+@implementer(ISource)
+class QueueSource(object):
+    """Implementation of ISource that reads data from a tornado.queues.Queue.
+    """
+
+    def __init__(self, logger, loop, gate, queue,
+                 metric_prefix='source'):
+        self.gate = gate
+        self.collector = queue
+        self.logger = logger
+        self.loop = loop
+        self.metric_prefix = metric_prefix
+        self.end_of_input = Event()
+        self.input_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+        self.loop.spawn_callback(self.onInput)
+
+    @gen.coroutine
+    def close(self, timeout=None):
+        self.state = CLOSING
+        self.logger.warning('Joining queue')
+        yield self.collector.join(timeout)
+
+    @gen.coroutine
+    def onInput(self):
+        respawn = True
+        try:
+            try:
+                msg = self.collector.get_nowait()
+            except QueueEmpty:
+                msg = yield self.collector.get()
+            self.gate.put_nowait(msg)
+        except Full:
+            yield self.gate.put(msg)
+        except Exception as err:
+            self.logger.exception(err)
+            self.input_error.set()
+            respawn = False
+        finally:
+            statsd.increment('%s.queued' % self.metric_prefix,
+                             tags=[self.sender_tag])
             if respawn:
                 self.loop.spawn_callback(self.onInput)
 
