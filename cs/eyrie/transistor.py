@@ -9,7 +9,6 @@ It is possible to pair a Kafka consumer with a ZMQ sender, or vice-versa, pair
 a ZMQ receiver with a Kafka producer. All communication is async, using Tornado
 queues throughout.
 """
-from Queue import Full
 from collections import deque, namedtuple
 from datetime import datetime
 from os import linesep
@@ -208,10 +207,7 @@ class QueueDrain(object):
 
     def emit_nowait(self, msg):
         self.logger.debug("Drain emitting")
-        try:
-            self.emitter.put_nowait(msg)
-        except QueueFull:
-            raise Full
+        self.emitter.put_nowait(msg)
 
     @gen.coroutine
     def emit(self, msg, timeout=None):
@@ -270,14 +266,14 @@ class RDKafkaDrain(object):
                                                                  kafka_msg),
             )
         except BufferError:
-            raise Full
+            raise QueueFull
 
     @gen.coroutine
     def emit(self, msg, retry_timeout=INITIAL_TIMEOUT):
         while True:
             try:
                 self.emit_nowait(msg)
-            except Full:
+            except QueueFull:
                 yield gen.sleep(retry_timeout.total_seconds())
                 retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
 
@@ -406,7 +402,7 @@ class ZMQDrain(object):
         try:
             self.emitter.send_multipart(msg, zmq.NOBLOCK)
         except zmq.Again:
-            raise Full
+            raise QueueFull
 
     @gen.coroutine
     def emit(self, msg, retry_timeout=INITIAL_TIMEOUT):
@@ -504,7 +500,7 @@ class QueueSource(object):
             except QueueEmpty:
                 msg = yield self.collector.get()
             self.gate.put_nowait(msg)
-        except Full:
+        except QueueFull:
             yield self.gate.put(msg)
         except Exception as err:
             self.logger.exception(err)
@@ -581,7 +577,7 @@ class RDKafkaSource(object):
                 else:
                     retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
                     self.logger.debug('No message, delaying: %s', retry_timeout)
-            except Full:
+            except QueueFull:
                 self.logger.debug('Gate queue full; yielding')
                 yield self.gate.put(kafka_msg)
             except Exception as err:
@@ -705,7 +701,7 @@ class ZMQSource(object):
                 self.gate.put_nowait(msg)
             except zmq.Again:
                 yield self._poll()
-            except Full:
+            except QueueFull:
                 self.logger.debug('Gate queue full; yielding')
                 yield self.gate.put(msg)
             except Exception as err:
