@@ -76,6 +76,10 @@ class IGate(Interface):
     samples = Attribute('Deque of ThroughputSample instances')
     state = Attribute('Current transition state')
     transducer = Attribute('Callable to transform input messages to output messages')
+    transducer_concurrency = Attribute("""
+        How many instances of transducer to run concurrently. If using
+        a coroutine for a transducer, you'll want to increase this.
+    """)
 
     def close():
         """Close any open resources and exit gracefully.

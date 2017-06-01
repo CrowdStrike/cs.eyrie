@@ -26,6 +26,7 @@ from tornado.queues import Queue, QueueEmpty, QueueFull
 from zope.interface import implementer
 
 
+DEFAULT_TRANSDUCER_CONCURRENCY = 1
 RUNNING, CLOSING, CLOSED = range(3)
 # See: https://github.com/confluentinc/confluent-kafka-python/issues/147
 TRANSIENT_ERRORS = set([KafkaError._ALL_BROKERS_DOWN, KafkaError._TRANSPORT])
@@ -539,6 +540,7 @@ class RDKafkaSource(object):
         self.collector.subscribe(list(topics))
         self._ignored_errors = set(kwargs.get('ignored_errors', []))
         self._ignored_errors.update(TRANSIENT_ERRORS)
+        self.loop.spawn_callback(self.onInput)
 
     @gen.coroutine
     def close(self):
@@ -590,6 +592,8 @@ class RDKafkaSource(object):
                 if respawn:
                     if retry_timeout > INITIAL_TIMEOUT:
                         yield gen.sleep(retry_timeout.total_seconds())
+                    elif self.gate.transducer_concurrency > 1:
+                        yield gen.moment
                     elif iterations > self.max_unyielded:
                         yield gen.moment
                         iterations = 0
@@ -713,7 +717,9 @@ class ZMQSource(object):
                                  tags=[self.sender_tag])
             finally:
                 if respawn:
-                    if iterations > self.max_unyielded:
+                    if self.gate.transducer_concurrency > 1:
+                        yield gen.moment
+                    elif iterations > self.max_unyielded:
                         yield gen.moment
                         iterations = 0
                 else:
