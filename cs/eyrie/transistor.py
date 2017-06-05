@@ -522,7 +522,6 @@ class ZMQDrain(object):
 
     @gen.coroutine
     def _poll(self):
-
         self.loop.add_handler(self.emitter,
                               self._handle_events,
                               self.loop.WRITE)
