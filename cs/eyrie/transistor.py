@@ -19,6 +19,7 @@ from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
 from cs.eyrie.interfaces import IDrain, IGate, IKafka, ISource, ITransistor
 from datadog import statsd
 from tornado import gen
+from tornado.concurrent import Future, is_future
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event
 from tornado.queues import Queue, QueueEmpty, QueueFull
@@ -155,6 +156,84 @@ class ThroughputTracker(object):
         ]
         self.samples.appendleft(current)
         self.logger.info('Throughput samples: %s', ', '.join(samples))
+
+
+@implementer(IGate)
+class BufferedGate(object):
+    """Implementation of IGate that uses a tornado.queues.Queue to buffer
+    incoming messages. Also reports throughput metrics.
+    """
+
+    def __init__(self, logger, loop, drain, queue, transducer, **kwargs):
+        self.logger = logger
+        self.loop = loop
+        self.drain = drain
+        self.metric_prefix = kwargs.get('metric_prefix', 'gate')
+        self.transducer = transducer
+        try:
+            test = self.transducer(None)
+            self._coroutine_transducer = is_future(test)
+        except:
+            self._coroutine_transducer = False
+        self.state = RUNNING
+        self._delay = kwargs.pop('delay', 0)
+        self._queue = queue
+        self._throughput_tracker = ThroughputTracker(logger, loop, **kwargs)
+        self.transducer_concurrency = kwargs.get('transducer_concurrency',
+                                                 DEFAULT_TRANSDUCER_CONCURRENCY)
+        for i in range(self.transducer_concurrency):
+            self.loop.spawn_callback(self._poll)
+
+    @gen.coroutine
+    def _operate(self, completed, incoming_msg):
+        if self._coroutine_transducer:
+            outgoing_msg_future = self.transducer(incoming_msg)
+            self.loop.add_future(outgoing_msg_future, self._maybe_send)
+        else:
+            outgoing_msg = self.transducer(incoming_msg)
+
+        if outgoing_msg is None:
+            self.logger.debug('No outgoing message; dropping')
+        elif isinstance(outgoing_msg, list):
+            self._send(*outgoing_msg)
+        else:
+            self._send(outgoing_msg)
+        completed.set_result(None)
+
+    @gen.coroutine
+    def _poll(self):
+        """Infinite coroutine for draining the queue.
+        """
+        while True:
+            try:
+                completed, incoming_msg = self._queue.get_nowait()
+            except QueueEmpty:
+                self.logger.debug('Source queue empty, waiting...')
+                completed, incoming_msg = yield self._queue.get()
+
+            yield self._operate(completed, incoming_msg)
+
+    def _send(self, *messages):
+        for msg in messages:
+            try:
+                self.drain.emit_nowait(msg)
+            except QueueFull:
+                self.logger.debug('Drain full, waiting...')
+                yield self.drain.emit(msg)
+            else:
+                self._throughput_tracker.num_emitted += 1
+                statsd.increment('%s.queued' % self.metric_prefix)
+
+    def put_nowait(self, msg):
+        completed = Future()
+        self._queue.put_nowait((completed, msg))
+        return completed
+
+    @gen.coroutine
+    def put(self, msg, timeout=None):
+        completed = Future()
+        yield self._queue.put((completed, msg), timeout)
+        raise gen.Return(completed)
 
 
 @implementer(IGate)
