@@ -188,20 +188,28 @@ class BufferedGate(object):
             self.loop.spawn_callback(self._poll)
 
     @gen.coroutine
-    def _operate(self, completed, incoming_msg):
-        if self._coroutine_transducer:
-            outgoing_msg_future = self.transducer(incoming_msg)
-            self.loop.add_future(outgoing_msg_future, self._maybe_send)
-        else:
-            outgoing_msg = self.transducer(incoming_msg)
+    def _drain_future(self, completed, outgoing_msg_future):
+        outgoing_msg = yield outgoing_msg_future
+        self._maybe_send(completed, outgoing_msg)
 
+    def _maybe_send(self, completed, outgoing_msg):
         if outgoing_msg is None:
             self.logger.debug('No outgoing message; dropping')
         elif isinstance(outgoing_msg, list):
             self._send(*outgoing_msg)
         else:
             self._send(outgoing_msg)
-        completed.set_result(None)
+        completed.set_result(outgoing_msg)
+
+    def _operate(self, completed, incoming_msg):
+        if self._coroutine_transducer:
+            outgoing_msg_future = self.transducer(incoming_msg)
+            self.loop.add_callback(self._drain_future,
+                                   completed,
+                                   outgoing_msg_future)
+        else:
+            outgoing_msg = self.transducer(incoming_msg)
+            self._maybe_send(completed, outgoing_msg)
 
     @gen.coroutine
     def _poll(self):
@@ -214,7 +222,7 @@ class BufferedGate(object):
                 self.logger.debug('Source queue empty, waiting...')
                 completed, incoming_msg = yield self._queue.get()
 
-            yield self._operate(completed, incoming_msg)
+            self._operate(completed, incoming_msg)
 
     def _send(self, *messages):
         for msg in messages:
