@@ -122,20 +122,11 @@ class Transistor(object):
                     break
 
 
-@implementer(IGate)
-class Gate(object):
-    """Implementation of IGate that accepts a message and blocks
-    until the configured drain accepts it. Also reports throughput metrics.
-    """
+class ThroughputTracker(object):
 
-    def __init__(self, logger, loop, drain, transducer,
-                 metric_prefix='transistor', num_samples=3):
+    def __init__(self, logger, loop, num_samples=3):
         self.logger = logger
         self.loop = loop
-        self.drain = drain
-        self.metric_prefix = metric_prefix
-        self.transducer = transducer
-        self.state = RUNNING
         # callback_time is in milliseconds
         self.throughput_pc = PeriodicCallback(self.onThroughput,
                                               30 * 1000,
@@ -157,16 +148,40 @@ class Gate(object):
         samples = [
             '%s|%0.1f' % (
                 deltas[i],
-                (current.num_emitted-sample.num_emitted)/deltas[i].total_seconds()
+                ((current.num_emitted-sample.num_emitted) /
+                 deltas[i].total_seconds()),
             )
             for i, sample in enumerate(self.samples)
         ]
         self.samples.appendleft(current)
         self.logger.info('Throughput samples: %s', ', '.join(samples))
 
+
+@implementer(IGate)
+class Gate(object):
+    """Implementation of IGate that accepts a message and blocks
+    until the configured drain accepts it. Also reports throughput metrics.
+    """
+
+    # We intentionally do not support higher concurrency
+    transducer_concurrency = 1
+
+    def __init__(self, logger, loop, drain, transducer, **kwargs):
+        self.logger = logger
+        self.loop = loop
+        self.drain = drain
+        self.metric_prefix = kwargs.get('metric_prefix', 'gate')
+        self.transducer = transducer
+        self.state = RUNNING
+        self._throughput_tracker = ThroughputTracker(logger, loop, **kwargs)
+
+    def _increment(self):
+        self._throughput_tracker.num_emitted += 1
+        statsd.increment('%s.queued' % self.metric_prefix)
+
     def put_nowait(self, msg):
         outgoing_msg = self.transducer(msg)
-        self.num_emitted += 1
+        self._increment()
         if outgoing_msg is None:
             self.logger.debug('No outgoing message; dropping')
         else:
@@ -175,7 +190,7 @@ class Gate(object):
     @gen.coroutine
     def put(self, msg, retry_timeout=INITIAL_TIMEOUT):
         outgoing_msg = self.transducer(msg)
-        self.num_emitted += 1
+        self._increment()
         if outgoing_msg is None:
             self.logger.debug('No outgoing message; dropping')
         else:
