@@ -14,7 +14,6 @@ from datetime import datetime
 from os import linesep
 
 import zmq
-from confluent_kafka import KafkaError
 from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
 from cs.eyrie.interfaces import IDrain, IGate, IKafka, ISource, ITransistor
 from datadog import statsd
@@ -28,8 +27,6 @@ from zope.interface import implementer
 
 DEFAULT_TRANSDUCER_CONCURRENCY = 1
 RUNNING, CLOSING, CLOSED = range(3)
-# See: https://github.com/confluentinc/confluent-kafka-python/issues/147
-TRANSIENT_ERRORS = set([KafkaError._ALL_BROKERS_DOWN, KafkaError._TRANSPORT])
 
 
 KafkaMessage = namedtuple(
@@ -362,13 +359,17 @@ class RDKafkaDrain(object):
     """
 
     def __init__(self, logger, loop, producer, topic, **kwargs):
+        from confluent_kafka import KafkaError
+
         self.emitter = producer
         self.logger = logger
         self.loop = loop
         self.loop.spawn_callback(self._poll)
         self._completed = Queue()
         self._ignored_errors = set(kwargs.get('ignored_errors', []))
-        self._ignored_errors.update(TRANSIENT_ERRORS)
+        # See: https://github.com/confluentinc/confluent-kafka-python/issues/147
+        self._ignored_errors.update(set([KafkaError._ALL_BROKERS_DOWN,
+                                         KafkaError._TRANSPORT]))
         self.metric_prefix = kwargs.get('metric_prefix', 'emitter')
         self.output_error = Event()
         self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
