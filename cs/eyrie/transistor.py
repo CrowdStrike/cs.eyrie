@@ -173,11 +173,6 @@ class BufferedGate(object):
         self.drain = drain
         self.metric_prefix = kwargs.get('metric_prefix', 'gate')
         self.transducer = transducer
-        try:
-            test = self.transducer(None)
-            self._coroutine_transducer = is_future(test)
-        except:
-            self._coroutine_transducer = False
         self.state = RUNNING
         self._delay = kwargs.pop('delay', 0)
         self._queue = queue
@@ -188,28 +183,27 @@ class BufferedGate(object):
             self.loop.spawn_callback(self._poll)
 
     @gen.coroutine
-    def _drain_future(self, completed, outgoing_msg_future):
+    def _drain_future(self, outgoing_msg_future):
         outgoing_msg = yield outgoing_msg_future
-        self._maybe_send(completed, outgoing_msg)
+        yield self._maybe_send(outgoing_msg)
 
-    def _maybe_send(self, completed, outgoing_msg):
+    @gen.coroutine
+    def _maybe_send(self, outgoing_msg):
         if outgoing_msg is None:
             self.logger.debug('No outgoing message; dropping')
         elif isinstance(outgoing_msg, list):
             self._send(*outgoing_msg)
         else:
             self._send(outgoing_msg)
-        completed.set_result(outgoing_msg)
 
-    def _operate(self, completed, incoming_msg):
-        if self._coroutine_transducer:
-            outgoing_msg_future = self.transducer(incoming_msg)
+    @gen.coroutine
+    def _operate(self, incoming_msg):
+        outgoing_msg_future = self.transducer(incoming_msg)
+        if is_future(outgoing_msg_future):
             self.loop.add_callback(self._drain_future,
-                                   completed,
                                    outgoing_msg_future)
         else:
-            outgoing_msg = self.transducer(incoming_msg)
-            self._maybe_send(completed, outgoing_msg)
+            yield self._maybe_send(completed, outgoing_msg)
 
     @gen.coroutine
     def _poll(self):
@@ -217,13 +211,14 @@ class BufferedGate(object):
         """
         while True:
             try:
-                completed, incoming_msg = self._queue.get_nowait()
+                incoming_msg = self._queue.get_nowait()
             except QueueEmpty:
                 self.logger.debug('Source queue empty, waiting...')
-                completed, incoming_msg = yield self._queue.get()
+                incoming_msg = yield self._queue.get()
 
-            self._operate(completed, incoming_msg)
+            yield self._operate(incoming_msg)
 
+    @gen.coroutine
     def _send(self, *messages):
         for msg in messages:
             try:
@@ -236,15 +231,11 @@ class BufferedGate(object):
                 statsd.increment('%s.queued' % self.metric_prefix)
 
     def put_nowait(self, msg):
-        completed = Future()
-        self._queue.put_nowait((completed, msg))
-        return completed
+        self._queue.put_nowait(msg)
 
     @gen.coroutine
     def put(self, msg, timeout=None):
-        completed = Future()
-        yield self._queue.put((completed, msg), timeout)
-        raise gen.Return(completed)
+        yield self._queue.put(msg, timeout)
 
 
 @implementer(IGate)
