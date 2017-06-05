@@ -42,6 +42,12 @@ KafkaMessage = namedtuple(
     ],
 )
 
+RoutingMessage = namedtuple(
+    'RoutingMessage', [
+        'destination',
+        'value',
+    ],
+)
 
 ThroughputSample = namedtuple(
     'ThroughputSample', [
@@ -277,6 +283,46 @@ class Gate(object):
 
 
 # Drain implementations
+@implementer(IDrain)
+class RoutingDrain(object):
+    """Implementation of IDrain that pushes to named drain(s) asynchronously.
+    Destination is determined by the message.
+    """
+
+    def __init__(self, logger, loop, **kwargs):
+        self.metric_prefix = kwargs.pop('metric_prefix', 'emitter')
+        self.emitter = {
+            destination: drain
+            for destination, drain in kwargs.items()
+        }
+        self.logger = logger
+        self.loop = loop
+        self.output_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+
+    @gen.coroutine
+    def close(self):
+        self.state = CLOSING
+        self.logger.debug("Flushing send queue")
+        drain_futures = [
+            drain.close()
+            for drain in self.emitter.values()
+        ]
+        yield gen.multi(drain_futures)
+
+    def emit_nowait(self, msg):
+        self.logger.debug("Drain emitting")
+        assert isinstance(msg, RoutingMessage)
+        self.emitter[msg.destination].emit_nowait(msg.value)
+
+    @gen.coroutine
+    def emit(self, msg, retry_timeout=INITIAL_TIMEOUT):
+        assert isinstance(msg, RoutingMessage)
+        yield self.emitter[msg.destination].emit(msg.value, retry_timeout)
+
+
 @implementer(IDrain)
 class QueueDrain(object):
     """Implementation of IDrain that writes to a tornado.queues.Queue.
