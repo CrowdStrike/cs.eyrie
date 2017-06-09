@@ -9,26 +9,24 @@ It is possible to pair a Kafka consumer with a ZMQ sender, or vice-versa, pair
 a ZMQ receiver with a Kafka producer. All communication is async, using Tornado
 queues throughout.
 """
-from Queue import Full
 from collections import deque, namedtuple
 from datetime import datetime
 from os import linesep
 
 import zmq
-from confluent_kafka import KafkaError
 from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
 from cs.eyrie.interfaces import IDrain, IGate, IKafka, ISource, ITransistor
 from datadog import statsd
 from tornado import gen
+from tornado.concurrent import Future, is_future
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event
-from tornado.queues import Queue
+from tornado.queues import Queue, QueueEmpty, QueueFull
 from zope.interface import implementer
 
 
+DEFAULT_TRANSDUCER_CONCURRENCY = 1
 RUNNING, CLOSING, CLOSED = range(3)
-# See: https://github.com/confluentinc/confluent-kafka-python/issues/147
-TRANSIENT_ERRORS = set([KafkaError._ALL_BROKERS_DOWN, KafkaError._TRANSPORT])
 
 
 KafkaMessage = namedtuple(
@@ -41,6 +39,12 @@ KafkaMessage = namedtuple(
     ],
 )
 
+RoutingMessage = namedtuple(
+    'RoutingMessage', [
+        'destination',
+        'value',
+    ],
+)
 
 ThroughputSample = namedtuple(
     'ThroughputSample', [
@@ -122,20 +126,11 @@ class Transistor(object):
                     break
 
 
-@implementer(IGate)
-class Gate(object):
-    """Implementation of IGate that accepts a message and blocks
-    until the configured drain accepts it. Also reports throughput metrics.
-    """
+class ThroughputTracker(object):
 
-    def __init__(self, logger, loop, drain, transducer,
-                 metric_prefix='transistor', num_samples=3):
+    def __init__(self, logger, loop, num_samples=3):
         self.logger = logger
         self.loop = loop
-        self.drain = drain
-        self.metric_prefix = metric_prefix
-        self.transducer = transducer
-        self.state = RUNNING
         # callback_time is in milliseconds
         self.throughput_pc = PeriodicCallback(self.onThroughput,
                                               30 * 1000,
@@ -157,16 +152,117 @@ class Gate(object):
         samples = [
             '%s|%0.1f' % (
                 deltas[i],
-                (current.num_emitted-sample.num_emitted)/deltas[i].total_seconds()
+                ((current.num_emitted-sample.num_emitted) /
+                 deltas[i].total_seconds()),
             )
             for i, sample in enumerate(self.samples)
         ]
         self.samples.appendleft(current)
         self.logger.info('Throughput samples: %s', ', '.join(samples))
 
+
+@implementer(IGate)
+class BufferedGate(object):
+    """Implementation of IGate that uses a tornado.queues.Queue to buffer
+    incoming messages. Also reports throughput metrics.
+    """
+
+    def __init__(self, logger, loop, drain, queue, transducer, **kwargs):
+        self.logger = logger
+        self.loop = loop
+        self.drain = drain
+        self.metric_prefix = kwargs.get('metric_prefix', 'gate')
+        self.transducer = transducer
+        self.state = RUNNING
+        self._delay = kwargs.pop('delay', 0)
+        self._queue = queue
+        self._throughput_tracker = ThroughputTracker(logger, loop, **kwargs)
+        self.transducer_concurrency = kwargs.get('transducer_concurrency',
+                                                 DEFAULT_TRANSDUCER_CONCURRENCY)
+        for i in range(self.transducer_concurrency):
+            self.loop.spawn_callback(self._poll)
+
+    @gen.coroutine
+    def _drain_future(self, outgoing_msg_future):
+        outgoing_msg = yield outgoing_msg_future
+        yield self._maybe_send(outgoing_msg)
+
+    @gen.coroutine
+    def _maybe_send(self, outgoing_msg):
+        if outgoing_msg is None:
+            self.logger.debug('No outgoing message; dropping')
+        elif isinstance(outgoing_msg, list):
+            self._send(*outgoing_msg)
+        else:
+            self._send(outgoing_msg)
+
+    @gen.coroutine
+    def _operate(self, incoming_msg):
+        outgoing_msg_future = self.transducer(incoming_msg)
+        if is_future(outgoing_msg_future):
+            self.loop.add_callback(self._drain_future,
+                                   outgoing_msg_future)
+        else:
+            yield self._maybe_send(completed, outgoing_msg)
+
+    @gen.coroutine
+    def _poll(self):
+        """Infinite coroutine for draining the queue.
+        """
+        while True:
+            try:
+                incoming_msg = self._queue.get_nowait()
+            except QueueEmpty:
+                self.logger.debug('Source queue empty, waiting...')
+                incoming_msg = yield self._queue.get()
+
+            yield self._operate(incoming_msg)
+
+    @gen.coroutine
+    def _send(self, *messages):
+        for msg in messages:
+            try:
+                self.drain.emit_nowait(msg)
+            except QueueFull:
+                self.logger.debug('Drain full, waiting...')
+                yield self.drain.emit(msg)
+            else:
+                self._throughput_tracker.num_emitted += 1
+                statsd.increment('%s.queued' % self.metric_prefix)
+
+    def put_nowait(self, msg):
+        self._queue.put_nowait(msg)
+
+    @gen.coroutine
+    def put(self, msg, timeout=None):
+        yield self._queue.put(msg, timeout)
+
+
+@implementer(IGate)
+class Gate(object):
+    """Implementation of IGate that accepts a message and blocks
+    until the configured drain accepts it. Also reports throughput metrics.
+    """
+
+    # We intentionally do not support higher concurrency
+    transducer_concurrency = 1
+
+    def __init__(self, logger, loop, drain, transducer, **kwargs):
+        self.logger = logger
+        self.loop = loop
+        self.drain = drain
+        self.metric_prefix = kwargs.get('metric_prefix', 'gate')
+        self.transducer = transducer
+        self.state = RUNNING
+        self._throughput_tracker = ThroughputTracker(logger, loop, **kwargs)
+
+    def _increment(self):
+        self._throughput_tracker.num_emitted += 1
+        statsd.increment('%s.queued' % self.metric_prefix)
+
     def put_nowait(self, msg):
         outgoing_msg = self.transducer(msg)
-        self.num_emitted += 1
+        self._increment()
         if outgoing_msg is None:
             self.logger.debug('No outgoing message; dropping')
         else:
@@ -175,7 +271,7 @@ class Gate(object):
     @gen.coroutine
     def put(self, msg, retry_timeout=INITIAL_TIMEOUT):
         outgoing_msg = self.transducer(msg)
-        self.num_emitted += 1
+        self._increment()
         if outgoing_msg is None:
             self.logger.debug('No outgoing message; dropping')
         else:
@@ -183,6 +279,77 @@ class Gate(object):
 
 
 # Drain implementations
+@implementer(IDrain)
+class RoutingDrain(object):
+    """Implementation of IDrain that pushes to named drain(s) asynchronously.
+    Destination is determined by the message.
+    """
+
+    def __init__(self, logger, loop, **kwargs):
+        self.metric_prefix = kwargs.pop('metric_prefix', 'emitter')
+        self.emitter = {
+            destination: drain
+            for destination, drain in kwargs.items()
+        }
+        self.logger = logger
+        self.loop = loop
+        self.output_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+
+    @gen.coroutine
+    def close(self):
+        self.state = CLOSING
+        self.logger.debug("Flushing send queue")
+        drain_futures = [
+            drain.close()
+            for drain in self.emitter.values()
+        ]
+        yield gen.multi(drain_futures)
+
+    def emit_nowait(self, msg):
+        self.logger.debug("Drain emitting")
+        assert isinstance(msg, RoutingMessage)
+        self.emitter[msg.destination].emit_nowait(msg.value)
+
+    @gen.coroutine
+    def emit(self, msg, retry_timeout=INITIAL_TIMEOUT):
+        assert isinstance(msg, RoutingMessage)
+        yield self.emitter[msg.destination].emit(msg.value, retry_timeout)
+
+
+@implementer(IDrain)
+class QueueDrain(object):
+    """Implementation of IDrain that writes to a tornado.queues.Queue.
+    """
+
+    def __init__(self, logger, loop, queue,
+                 metric_prefix='emitter'):
+        self.emitter = queue
+        self.logger = logger
+        self.loop = loop
+        self.metric_prefix = metric_prefix
+        self.output_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+
+    @gen.coroutine
+    def close(self):
+        self.state = CLOSING
+        self.logger.debug("Flushing send queue")
+        self.emitter.flush()
+
+    def emit_nowait(self, msg):
+        self.logger.debug("Drain emitting")
+        self.emitter.put_nowait(msg)
+
+    @gen.coroutine
+    def emit(self, msg, timeout=None):
+        yield self.emitter.put(msg, timeout)
+
+
 @implementer(IDrain, IKafka)
 class RDKafkaDrain(object):
     """Implementation of IDrain that produces to a Kafka topic using librdkafka
@@ -191,13 +358,17 @@ class RDKafkaDrain(object):
     """
 
     def __init__(self, logger, loop, producer, topic, **kwargs):
+        from confluent_kafka import KafkaError
+
         self.emitter = producer
         self.logger = logger
         self.loop = loop
         self.loop.spawn_callback(self._poll)
         self._completed = Queue()
         self._ignored_errors = set(kwargs.get('ignored_errors', []))
-        self._ignored_errors.update(TRANSIENT_ERRORS)
+        # See: https://github.com/confluentinc/confluent-kafka-python/issues/147
+        self._ignored_errors.update(set([KafkaError._ALL_BROKERS_DOWN,
+                                         KafkaError._TRANSPORT]))
         self.metric_prefix = kwargs.get('metric_prefix', 'emitter')
         self.output_error = Event()
         self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
@@ -235,14 +406,14 @@ class RDKafkaDrain(object):
                                                                  kafka_msg),
             )
         except BufferError:
-            raise Full
+            raise QueueFull
 
     @gen.coroutine
     def emit(self, msg, retry_timeout=INITIAL_TIMEOUT):
         while True:
             try:
                 self.emit_nowait(msg)
-            except Full:
+            except QueueFull:
                 yield gen.sleep(retry_timeout.total_seconds())
                 retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
 
@@ -351,7 +522,6 @@ class ZMQDrain(object):
 
     @gen.coroutine
     def _poll(self):
-
         self.loop.add_handler(self.emitter,
                               self._handle_events,
                               self.loop.WRITE)
@@ -371,7 +541,7 @@ class ZMQDrain(object):
         try:
             self.emitter.send_multipart(msg, zmq.NOBLOCK)
         except zmq.Again:
-            raise Full
+            raise QueueFull
 
     @gen.coroutine
     def emit(self, msg, retry_timeout=INITIAL_TIMEOUT):
@@ -435,6 +605,53 @@ class PailfileSource(object):
                 self.loop.spawn_callback(self.onInput)
 
 
+@implementer(ISource)
+class QueueSource(object):
+    """Implementation of ISource that reads data from a tornado.queues.Queue.
+    """
+
+    def __init__(self, logger, loop, gate, queue,
+                 metric_prefix='source'):
+        self.gate = gate
+        self.collector = queue
+        self.logger = logger
+        self.loop = loop
+        self.metric_prefix = metric_prefix
+        self.end_of_input = Event()
+        self.input_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+        self.loop.spawn_callback(self.onInput)
+
+    @gen.coroutine
+    def close(self, timeout=None):
+        self.state = CLOSING
+        self.logger.warning('Joining queue')
+        yield self.collector.join(timeout)
+
+    @gen.coroutine
+    def onInput(self):
+        respawn = True
+        try:
+            try:
+                msg = self.collector.get_nowait()
+            except QueueEmpty:
+                msg = yield self.collector.get()
+            self.gate.put_nowait(msg)
+        except QueueFull:
+            yield self.gate.put(msg)
+        except Exception as err:
+            self.logger.exception(err)
+            self.input_error.set()
+            respawn = False
+        finally:
+            statsd.increment('%s.queued' % self.metric_prefix,
+                             tags=[self.sender_tag])
+            if respawn:
+                self.loop.spawn_callback(self.onInput)
+
+
 @implementer(ISource, IKafka)
 class RDKafkaSource(object):
     """Implementation of ISource that consumes messages from a Kafka topic.
@@ -458,6 +675,7 @@ class RDKafkaSource(object):
         self.collector.subscribe(list(topics))
         self._ignored_errors = set(kwargs.get('ignored_errors', []))
         self._ignored_errors.update(TRANSIENT_ERRORS)
+        self.loop.spawn_callback(self.onInput)
 
     @gen.coroutine
     def close(self):
@@ -498,7 +716,7 @@ class RDKafkaSource(object):
                 else:
                     retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
                     self.logger.debug('No message, delaying: %s', retry_timeout)
-            except Full:
+            except QueueFull:
                 self.logger.debug('Gate queue full; yielding')
                 yield self.gate.put(kafka_msg)
             except Exception as err:
@@ -509,6 +727,8 @@ class RDKafkaSource(object):
                 if respawn:
                     if retry_timeout > INITIAL_TIMEOUT:
                         yield gen.sleep(retry_timeout.total_seconds())
+                    elif self.gate.transducer_concurrency > 1:
+                        yield gen.moment
                     elif iterations > self.max_unyielded:
                         yield gen.moment
                         iterations = 0
@@ -620,7 +840,7 @@ class ZMQSource(object):
                 self.gate.put_nowait(msg)
             except zmq.Again:
                 yield self._poll()
-            except Full:
+            except QueueFull:
                 self.logger.debug('Gate queue full; yielding')
                 yield self.gate.put(msg)
             except Exception as err:
@@ -632,7 +852,9 @@ class ZMQSource(object):
                                  tags=[self.sender_tag])
             finally:
                 if respawn:
-                    if iterations > self.max_unyielded:
+                    if self.gate.transducer_concurrency > 1:
+                        yield gen.moment
+                    elif iterations > self.max_unyielded:
                         yield gen.moment
                         iterations = 0
                 else:
