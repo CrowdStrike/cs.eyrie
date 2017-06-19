@@ -184,7 +184,8 @@ class BufferedGate(object):
         self._queue = queue
         self._throughput_tracker = ThroughputTracker(logger, loop, **kwargs)
         self.transducer_concurrency = kwargs.get('transducer_concurrency',
-                                                 DEFAULT_TRANSDUCER_CONCURRENCY)
+                                                 self._queue.maxsize or \
+                                                  DEFAULT_TRANSDUCER_CONCURRENCY)
         for i in range(self.transducer_concurrency):
             self.loop.spawn_callback(self._poll)
 
