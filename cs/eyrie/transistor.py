@@ -14,6 +14,12 @@ from datetime import datetime
 from os import linesep
 
 import zmq
+try:
+    from confluent_kafka import KafkaError
+except ImportError:
+    TRANSIENT_ERRORS = set()
+else:
+    TRANSIENT_ERRORS = set([KafkaError._ALL_BROKERS_DOWN, KafkaError._TRANSPORT])
 from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
 from cs.eyrie.interfaces import IDrain, IGate, IKafka, ISource, ITransistor
 from datadog import statsd
@@ -178,32 +184,19 @@ class BufferedGate(object):
         self._queue = queue
         self._throughput_tracker = ThroughputTracker(logger, loop, **kwargs)
         self.transducer_concurrency = kwargs.get('transducer_concurrency',
-                                                 DEFAULT_TRANSDUCER_CONCURRENCY)
+                                                 self._queue.maxsize or \
+                                                  DEFAULT_TRANSDUCER_CONCURRENCY)
         for i in range(self.transducer_concurrency):
             self.loop.spawn_callback(self._poll)
-
-    @gen.coroutine
-    def _drain_future(self, outgoing_msg_future):
-        outgoing_msg = yield outgoing_msg_future
-        yield self._maybe_send(outgoing_msg)
 
     @gen.coroutine
     def _maybe_send(self, outgoing_msg):
         if outgoing_msg is None:
             self.logger.debug('No outgoing message; dropping')
         elif isinstance(outgoing_msg, list):
-            self._send(*outgoing_msg)
+            yield self._send(*outgoing_msg)
         else:
-            self._send(outgoing_msg)
-
-    @gen.coroutine
-    def _operate(self, incoming_msg):
-        outgoing_msg_future = self.transducer(incoming_msg)
-        if is_future(outgoing_msg_future):
-            self.loop.add_callback(self._drain_future,
-                                   outgoing_msg_future)
-        else:
-            yield self._maybe_send(completed, outgoing_msg)
+            yield self._send(outgoing_msg)
 
     @gen.coroutine
     def _poll(self):
@@ -216,7 +209,10 @@ class BufferedGate(object):
                 self.logger.debug('Source queue empty, waiting...')
                 incoming_msg = yield self._queue.get()
 
-            yield self._operate(incoming_msg)
+            outgoing_msg_future = self.transducer(incoming_msg)
+            if is_future(outgoing_msg_future):
+                outgoing_msg = yield outgoing_msg_future
+            yield self._maybe_send(outgoing_msg)
 
     @gen.coroutine
     def _send(self, *messages):
@@ -309,7 +305,7 @@ class RoutingDrain(object):
         yield gen.multi(drain_futures)
 
     def emit_nowait(self, msg):
-        self.logger.debug("Drain emitting")
+        self.logger.debug("RoutingDrain emitting")
         assert isinstance(msg, RoutingMessage)
         self.emitter[msg.destination].emit_nowait(msg.value)
 
@@ -358,8 +354,6 @@ class RDKafkaDrain(object):
     """
 
     def __init__(self, logger, loop, producer, topic, **kwargs):
-        from confluent_kafka import KafkaError
-
         self.emitter = producer
         self.logger = logger
         self.loop = loop
@@ -367,8 +361,7 @@ class RDKafkaDrain(object):
         self._completed = Queue()
         self._ignored_errors = set(kwargs.get('ignored_errors', []))
         # See: https://github.com/confluentinc/confluent-kafka-python/issues/147
-        self._ignored_errors.update(set([KafkaError._ALL_BROKERS_DOWN,
-                                         KafkaError._TRANSPORT]))
+        self._ignored_errors.update(TRANSIENT_ERRORS)
         self.metric_prefix = kwargs.get('metric_prefix', 'emitter')
         self.output_error = Event()
         self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
