@@ -316,7 +316,7 @@ class RoutingDrain(object):
         yield gen.multi(drain_futures)
 
     def emit_nowait(self, msg):
-        self.logger.debug("Drain emitting")
+        self.logger.debug("RoutingDrain emitting")
         assert isinstance(msg, RoutingMessage)
         self.emitter[msg.destination].emit_nowait(msg.value)
 
