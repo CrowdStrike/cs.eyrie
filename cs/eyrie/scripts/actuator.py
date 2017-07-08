@@ -17,7 +17,6 @@ except ImportError:
     SequenceFile = None
 from pyramid.path import DottedNameResolver
 from tornado import gen
-from tornado.locks import Semaphore
 
 
 class Actuator(Vassal):
