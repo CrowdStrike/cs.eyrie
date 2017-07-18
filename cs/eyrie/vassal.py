@@ -27,7 +27,7 @@ except ImportError:
     init_sa = None
 
 try:
-    from psycopg2 import DataError, Error
+    from psycopg2 import DataError, Error, IntegrityError
     from psycopg2.extras import register_uuid
     from psycopg2.extras import DictCursor
 except ImportError:
@@ -397,9 +397,15 @@ class BatchVassal(Vassal):
             self.cursor.execute('SAVEPOINT {};'.format(sname))
 
         self.bufs[name].seek(0)
-        self.delete_from(name)
-        self.bufs[name].seek(0)
-        self.cursor.copy_expert(sql, self.bufs[name])
+        try:
+            self.cursor.copy_expert(sql, self.bufs[name])
+        except IntegrityError as err:
+            self.logger.exception(err)
+            self.cursor.execute('ROLLBACK TO SAVEPOINT {};'.format(sname))
+            self.bufs[name].seek(0)
+            self.delete_from(name)
+            self.bufs[name].seek(0)
+            self.cursor.copy_expert(sql, self.bufs[name])
 
     def delete_from(self, name):
         table = self.tables_by_name[name]
