@@ -24,6 +24,7 @@ requirements = [
     'setuptools_scm',
     'six',
     'tornado',
+    'vmprof',
     'zope.interface',
 ]
 if sys.version < '3':
