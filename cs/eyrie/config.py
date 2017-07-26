@@ -22,6 +22,7 @@ from copy import copy
 from datetime import timedelta
 from functools import partial
 from logging.config import dictConfig
+from tempfile import gettempdir, mkstemp
 
 from pyramid.path import DottedNameResolver
 from pyramid.settings import asbool
@@ -222,6 +223,21 @@ def info_signal_handler(signal, frame):
                  ''.join(traceback.format_stack(frame)))
 
 
+def vmprof_signal_handler(signal, frame):
+    import vmprof
+    curr_proc = multiprocessing.current_process()
+    logger = logging.getLogger('eyrie.script.profile')
+    if vmprof.is_enabled():
+        logger.warn('Disabling vmprof, output path: %s',
+                    curr_proc.profile_output_path)
+        vmprof.disable()
+    else:
+        fileno, output_path = mkstemp(dir=curr_proc.profile_output_dir)
+        curr_proc.profile_output_path = output_path
+        logger.warn('Enabling vmprof, output path: %s', output_path)
+        vmprof.enable(fileno)
+
+
 def script_main(script_class, cache_region, **script_kwargs):
     loop = script_kwargs.pop('loop', None)
     start_loop = script_kwargs.pop('start_loop', True)
@@ -245,14 +261,19 @@ def script_main(script_class, cache_region, **script_kwargs):
     parser.add_argument('--blocking-log-threshold',
                         help=blt, default=blt_default, type=int, metavar='s')
 
+    parser.add_argument('--profile-output-dir',
+                        help="Directory to write profile output to",
+                        default=gettempdir())
+
     if script_class.args is not None:
         for pa, kw in script_class.args:
             parser.add_argument(*pa, **kw)
 
     pargs = parser.parse_args()
 
+    curr_proc = multiprocessing.current_process()
+    curr_proc.profile_output_dir = pargs.profile_output_dir
     if pargs.title is not None:
-        curr_proc = multiprocessing.current_process()
         curr_proc.name = pargs.title
         if '__pypy__' not in sys.builtin_module_names:
             from setproctitle import setproctitle
@@ -260,6 +281,7 @@ def script_main(script_class, cache_region, **script_kwargs):
 
     # TODO: add signal handlers to drop caches
     signal.signal(signal.SIGUSR1, info_signal_handler)
+    signal.signal(signal.SIGUSR2, vmprof_signal_handler)
 
     # Pop off kwargs not relevant to script class
     kwargs = copy(vars(pargs))
