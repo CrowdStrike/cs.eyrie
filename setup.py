@@ -22,8 +22,8 @@ requirements = [
     'setproctitle',
     'setuptools',
     'setuptools_scm',
-    'tornado',
     'six',
+    'tornado',
     'zope.interface',
 ]
 if sys.version < '3':
