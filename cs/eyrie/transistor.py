@@ -180,9 +180,13 @@ class ThroughputTracker(object):
 
 @implementer(IGate)
 class BufferedGate(object):
-    """Implementation of IGate that uses a tornado.queues.Queue to buffer
-    incoming messages. Also reports throughput metrics.
+    """Implementation of IGate that:
+        * Uses a tornado.queues.Queue to buffer incoming messages
+        * Reports throughput metrics
+        * Can delay messages (if transducer raises cs.eyrie.transistor.Delay)
     """
+
+    max_delayed = 1024
 
     def __init__(self, logger, loop, drain, queue, transducer, **kwargs):
         self.logger = logger
@@ -191,8 +195,9 @@ class BufferedGate(object):
         self.metric_prefix = kwargs.get('metric_prefix', 'gate')
         self.transducer = transducer
         self.state = RUNNING
-        self._delay = kwargs.pop('delay', 0)
+        self.max_delayed = kwargs.pop('max_delayed', self.max_delayed)
         self._queue = queue
+        self._delayed_count = 0
         self._throughput_tracker = ThroughputTracker(logger, loop, **kwargs)
         self.transducer_concurrency = kwargs.get('transducer_concurrency',
                                                  self._queue.maxsize or \
@@ -228,12 +233,22 @@ class BufferedGate(object):
                 else:
                     outgoing_msg = outgoing_msg_future
             except Delay as err:
-                # Derail this coroutine since it won't be doing useful work
-                should_continue = False
-                # Spawn a replacement
-                self.loop.spawn_callback(self._poll)
-                yield gen.sleep(err.delay_period)
                 outgoing_msg = err.value
+                if self.max_delayed and self.delayed_count <= self.max_delayed:
+                    # Derail this coroutine since it won't be doing useful work
+                    should_continue = False
+                    # Spawn a replacement
+                    self.loop.spawn_callback(self._poll)
+                    log_msg = 'Delaying message: %s'
+                    self.logger.debug(log_msg, err.delay_period)
+                    self._delayed_count += 1
+                    yield gen.sleep(err.delay_period)
+                    self._delayed_count -= 1
+                else:
+                    # If we've exceeded how many buffered delaying messages,
+                    # fast return to redrive (sorry Kafka)
+                    log_msg = 'Max delayed messages reached, forwarding: %d'
+                    self.logger.debug(log_msg, self.max_delayed)
             finally:
                 yield self._maybe_send(outgoing_msg)
 
