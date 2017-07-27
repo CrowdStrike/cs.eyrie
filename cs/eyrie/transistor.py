@@ -212,6 +212,8 @@ class BufferedGate(object):
             outgoing_msg_future = self.transducer(incoming_msg)
             if is_future(outgoing_msg_future):
                 outgoing_msg = yield outgoing_msg_future
+            else:
+                outgoing_msg = outgoing_msg_future
             yield self._maybe_send(outgoing_msg)
 
     @gen.coroutine
