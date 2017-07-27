@@ -24,7 +24,7 @@ from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
 from cs.eyrie.interfaces import IDrain, IGate, IKafka, ISource, ITransistor
 from datadog import statsd
 from tornado import gen
-from tornado.concurrent import Future, is_future
+from tornado.concurrent import is_future
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event
 from tornado.queues import Queue, QueueEmpty, QueueFull
