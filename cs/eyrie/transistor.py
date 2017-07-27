@@ -234,7 +234,8 @@ class BufferedGate(object):
                     outgoing_msg = outgoing_msg_future
             except Delay as err:
                 outgoing_msg = err.value
-                if self.max_delayed and self.delayed_count <= self.max_delayed:
+                if self.max_delayed is None or \
+                   self._delayed_count <= self.max_delayed:
                     # Derail this coroutine since it won't be doing useful work
                     should_continue = False
                     # Spawn a replacement
