@@ -35,6 +35,17 @@ DEFAULT_TRANSDUCER_CONCURRENCY = 1
 RUNNING, CLOSING, CLOSED = range(3)
 
 
+class Delay(gen.Return):
+    """Special exception to indicate that a returned Future should
+    be delayed by a certain period.
+    """
+    def __init__(self, delay_period, value=None):
+        super(Delay, self).__init__(value)
+        self.delay_period = delay_period
+        # Cython recognizes subclasses of StopIteration with a .args tuple.
+        self.args = (delay_period, value,)
+
+
 KafkaMessage = namedtuple(
     'KafkaMessage', [
         'key',
@@ -202,19 +213,29 @@ class BufferedGate(object):
     def _poll(self):
         """Infinite coroutine for draining the queue.
         """
-        while True:
+        should_continue = True
+        while should_continue:
             try:
                 incoming_msg = self._queue.get_nowait()
             except QueueEmpty:
                 self.logger.debug('Source queue empty, waiting...')
                 incoming_msg = yield self._queue.get()
 
-            outgoing_msg_future = self.transducer(incoming_msg)
-            if is_future(outgoing_msg_future):
-                outgoing_msg = yield outgoing_msg_future
-            else:
-                outgoing_msg = outgoing_msg_future
-            yield self._maybe_send(outgoing_msg)
+            try:
+                outgoing_msg_future = self.transducer(incoming_msg)
+                if is_future(outgoing_msg_future):
+                    outgoing_msg = yield outgoing_msg_future
+                else:
+                    outgoing_msg = outgoing_msg_future
+            except Delay as err:
+                # Derail this coroutine since it won't be doing useful work
+                should_continue = False
+                # Spawn a replacement
+                self.loop.spawn_callback(self._poll)
+                yield gen.sleep(err.delay_period)
+                outgoing_msg = err.value
+            finally:
+                yield self._maybe_send(outgoing_msg)
 
     @gen.coroutine
     def _send(self, *messages):
