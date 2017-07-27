@@ -220,6 +220,8 @@ class BufferedGate(object):
         """
         should_continue = True
         while should_continue:
+            statsd.gauge('%s.inflight.delayed' % self.metric_prefix,
+                         self._delayed_count)
             try:
                 incoming_msg = self._queue.get_nowait()
             except QueueEmpty:
