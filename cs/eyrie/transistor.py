@@ -35,15 +35,12 @@ DEFAULT_TRANSDUCER_CONCURRENCY = 1
 RUNNING, CLOSING, CLOSED = range(3)
 
 
-class Delay(gen.Return):
-    """Special exception to indicate that a returned Future should
-    be delayed by a certain period.
-    """
-    def __init__(self, delay_period, value=None):
-        super(Delay, self).__init__(value)
-        self.delay_period = delay_period
-        # Cython recognizes subclasses of StopIteration with a .args tuple.
-        self.args = (delay_period, value,)
+DelayMessage = namedtuple(
+    'DelayMessage', [
+        'delay_period',
+        'value',
+    ],
+)
 
 
 KafkaMessage = namedtuple(
@@ -183,7 +180,8 @@ class BufferedGate(object):
     """Implementation of IGate that:
         * Uses a tornado.queues.Queue to buffer incoming messages
         * Reports throughput metrics
-        * Can delay messages (if transducer raises cs.eyrie.transistor.Delay)
+        * Expects messages returned by the transducer to be of type
+          cs.eyrie.transistor.DelayMessage
     """
 
     max_delayed = 1024
@@ -228,32 +226,34 @@ class BufferedGate(object):
                 self.logger.debug('Source queue empty, waiting...')
                 incoming_msg = yield self._queue.get()
 
-            try:
-                outgoing_msg_future = self.transducer(incoming_msg)
-                if is_future(outgoing_msg_future):
-                    outgoing_msg = yield outgoing_msg_future
-                else:
-                    outgoing_msg = outgoing_msg_future
-            except Delay as err:
-                outgoing_msg = err.value
-                if self.max_delayed is None or \
-                   self._delayed_count <= self.max_delayed:
-                    # Derail this coroutine since it won't be doing useful work
-                    should_continue = False
-                    # Spawn a replacement
-                    self.loop.spawn_callback(self._poll)
-                    log_msg = 'Delaying message: %s'
-                    self.logger.debug(log_msg, err.delay_period)
-                    self._delayed_count += 1
-                    yield gen.sleep(err.delay_period)
-                    self._delayed_count -= 1
-                else:
-                    # If we've exceeded how many buffered delaying messages,
-                    # fast return to redrive (sorry Kafka)
-                    log_msg = 'Max delayed messages reached, forwarding: %d'
-                    self.logger.debug(log_msg, self.max_delayed)
-            finally:
-                yield self._maybe_send(outgoing_msg)
+            outgoing_msg_future = self.transducer(incoming_msg)
+            if is_future(outgoing_msg_future):
+                outgoing_msg = yield outgoing_msg_future
+            else:
+                outgoing_msg = outgoing_msg_future
+
+            assert isinstance(outgoing_msg, DelayMessage)
+
+            if outgoing_msg.delay_period is not None and \
+               (self.max_delayed is None or
+                    self._delayed_count <= self.max_delayed):
+                # Derail this coroutine since it won't be doing useful work
+                should_continue = False
+                # Spawn a replacement
+                self.loop.spawn_callback(self._poll)
+                log_msg = 'Delaying message: %s'
+                self.logger.debug(log_msg, outgoing_msg.delay_period)
+                self._delayed_count += 1
+                yield gen.sleep(outgoing_msg.delay_period)
+                self._delayed_count -= 1
+            else:
+                # If we've exceeded how many buffered delaying messages,
+                # fast return to redrive (sorry Kafka)
+                log_msg = 'Max delayed messages reached, forwarding: %d'
+                self.logger.debug(log_msg, self.max_delayed)
+
+            # Remove our wrapper before pushing down the pipe
+            yield self._maybe_send(outgoing_msg.value)
 
     @gen.coroutine
     def _send(self, *messages):
