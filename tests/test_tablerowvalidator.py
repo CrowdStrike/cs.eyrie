@@ -7,7 +7,7 @@ from cs.eyrie import vassal
 from collections import namedtuple
 
 
-Column = namedtuple('Column', ['name', 'type'])
+Column = namedtuple('Column', ['name', 'type', 'nullable'])
 
 
 class _FakeTable():
@@ -20,20 +20,21 @@ class TestRowValidator(unittest.TestCase):
 
     def setUp(self):
         self.fake_table = _FakeTable([
-            Column('BIGINT', 'BIGINT'),
-            Column('BIGINTEGER', 'BIGINTEGER'),
-            Column('DECIMAL', 'DECIMAL'),
-            Column('FLOAT', 'FLOAT'),
-            Column('INT', 'INT'),
-            Column('INTEGER', 'INTEGER'),
-            Column('DATE', 'DATE'),
-            Column('DATETIME', 'DATETIME'),
-            Column('REAL', 'REAL'),
-            Column('SMALLINT', 'SMALLINT'),
-            Column('SMALLINTEGER', 'SMALLINTEGER'),
-            Column('TIME', 'TIME'),
-            Column('TIMESTAMP', 'TIMESTAMP'),
-            Column('UUID', 'UUID'),
+            Column('BIGINT', 'BIGINT', True),
+            Column('BIGINTEGER', 'BIGINTEGER', True),
+            Column('DECIMAL', 'DECIMAL', True),
+            Column('FLOAT', 'FLOAT', True),
+            Column('INT', 'INT', True),
+            Column('INTEGER', 'INTEGER', True),
+            Column('DATE', 'DATE', True),
+            Column('DATETIME', 'DATETIME', True),
+            Column('REAL', 'REAL', True),
+            Column('SMALLINT', 'SMALLINT', True),
+            Column('SMALLINTEGER', 'SMALLINTEGER', True),
+            Column('TIME', 'TIME', True),
+            Column('TIMESTAMP', 'TIMESTAMP', True),
+            Column('UUID', 'UUID', True),
+            Column('RequiredUUID', 'UUID', False),
         ])
         self.table_validator = vassal._TableRowValidator(self.fake_table)
 
@@ -53,6 +54,7 @@ class TestRowValidator(unittest.TestCase):
             'TIME': '23:00:00Z',
             'TIMESTAMP': '1982-12-31T23:00:00Z',
             'UUID': '123e4567-e89b-12d3-a456-426655440000',
+            'RequiredUUID': '123e4567-e89b-12d3-a456-426655440000',
         }
         row.update(kwargs)
         return row
@@ -80,6 +82,14 @@ class TestRowValidator(unittest.TestCase):
             self.assertEqual(len(errors),
                              1,
                              'Wrong number of errors: {}'.format(errors))
+
+    def test_nullable(self):
+        errors = self.table_validator.validate_row(self.build_row(
+            RequiredUUID='',
+        ))
+        self.assertEqual(len(errors),
+                         1,
+                         'Wrong number of errors: {}'.format(errors))
 
     def tearDown(self):
         pass

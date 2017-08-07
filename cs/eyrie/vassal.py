@@ -269,6 +269,7 @@ class _TableRowValidator(object):
         "column_name",
         "validation_op",
         "col_type",
+        "nullable",
     ])
 
     type_checks = {
@@ -289,7 +290,7 @@ class _TableRowValidator(object):
     }
 
     def __init__(self, table, *exclude_cols):
-        """ table is of type with iter(columns) name,type """
+        """ table is of type with iter(columns) name,type,nullable """
         self.validation_ops = []
         for column in table.columns:
             if column.name in exclude_cols:
@@ -297,7 +298,10 @@ class _TableRowValidator(object):
             col_type = str(column.type).upper()
             validation_op = self.type_checks.get(col_type, lambda x: True)
             self.validation_ops.append(
-                self._ValidationOp(column.name, validation_op, col_type)
+                self._ValidationOp(column.name,
+                                   validation_op,
+                                   col_type,
+                                   column.nullable)
             )
 
     def validate_row(self, row):
@@ -306,7 +310,7 @@ class _TableRowValidator(object):
         for v in self.validation_ops:
             try:
                 data = row.get(v.column_name)
-                if data:
+                if not v.nullable or data:
                     v.validation_op(data)
             except Exception:
                 msg = 'Invalid data for type {} column "{}": "{}"'
