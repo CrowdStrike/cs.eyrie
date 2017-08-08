@@ -35,6 +35,7 @@ from cs.eyrie.transistor.source import (
     StreamSource,
     ZMQSource,
 )
+from cs.eyrie.transistor.sqs import AsyncSQSClient, build_send_message_request
 
 
 def get_last_element(msg):
