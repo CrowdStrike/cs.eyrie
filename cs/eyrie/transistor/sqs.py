@@ -270,31 +270,6 @@ class AsyncSQSClient(object):
         req_kwargs['body'] = aws_request.body
         return HTTPRequest(aws_request.url, **req_kwargs)
 
-    def build_send_message(self, message_body, delay_seconds,
-                           binary=False,
-                           **message_attributes):
-        """Construct a namedtuple representing a SendMessageRequestEntry,
-        correctly handling binary input data. This assumes this class
-        will be responsible for reading these messages back from the queue.
-        """
-        MessageAttributes = OrderedDict()
-        flags = 0
-        if binary:
-            flags |= ZLIB_COMPRESS
-            flags |= BASE64_ENCODE
-            message_body = compress(message_body).encode('base64')
-        MessageAttributes['flags'] = dict(
-            DataType='Number',
-            StringValue=str(flags),
-        )
-        MessageAttributes.update(message_attributes)
-        return SendMessageRequestEntry(
-            Id=uuid4().hex,
-            MessageBody=message_body,
-            DelaySeconds=int(delay_seconds),
-            MessageAttributes=MessageAttributes
-        )
-
     @gen.coroutine
     def delete_message(self, sqs_message, **req_kwargs):
         """Asynchronously deletes a message from the queue
@@ -407,3 +382,30 @@ class AsyncSQSClient(object):
                                                    self.send_message,
                                                    *req_entries, **req_kwargs)
         raise gen.Return(batch_response)
+
+
+def build_send_message_request(message_body,
+                               delay_seconds=0,
+                               binary=True,
+                               **message_attributes):
+    """Construct a namedtuple representing a SendMessageRequestEntry,
+    correctly handling binary input data. This assumes this class
+    will be responsible for reading these messages back from the queue.
+    """
+    MessageAttributes = OrderedDict()
+    flags = 0
+    if binary:
+        flags |= ZLIB_COMPRESS
+        flags |= BASE64_ENCODE
+        message_body = compress(message_body).encode('base64')
+    MessageAttributes['flags'] = dict(
+        DataType='Number',
+        StringValue=str(flags),
+    )
+    MessageAttributes.update(message_attributes)
+    return SendMessageRequestEntry(
+        Id=uuid4().hex,
+        MessageBody=message_body,
+        DelaySeconds=int(delay_seconds),
+        MessageAttributes=MessageAttributes
+    )
