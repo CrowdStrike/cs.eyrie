@@ -187,8 +187,10 @@ class AsyncSQSClient(object):
                 req_kwargs['retry'] = retry
                 req_kwargs['attempt'] = attempt
                 # https://www.awsarchitectureblog.com/2015/03/backoff.html
-                delay = min(MAX_TIMEOUT, self.min_sleep * 2 ** attempt)
-                delay = min(MAX_TIMEOUT, uniform(self.min_sleep, delay * 3))
+                delay = min(MAX_TIMEOUT.total_seconds(),
+                            self.min_sleep * 2 ** attempt)
+                delay = min(MAX_TIMEOUT.total_seconds(),
+                            uniform(self.min_sleep, delay * 3))
                 yield gen.sleep(delay)
                 response = yield self._operate(op_name, api_params,
                                                **req_kwargs)
