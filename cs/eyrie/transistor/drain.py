@@ -199,6 +199,58 @@ class RoutingDrain(object):
 
 
 @implementer(IDrain)
+class SQSDrain(object):
+    """Implementation of IDrain that writes to an AWS SQS queue.
+    """
+
+    def __init__(self, logger, loop, sqs_client,
+                 metric_prefix='emitter'):
+        self.emitter = sqs_client
+        self.logger = logger
+        self.loop = loop
+        self.metric_prefix = metric_prefix
+        self.output_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+        self._send_queue = Queue(self.emitter.max_messages)
+        self.loop.spawn_callback(self._onFlush)
+
+    @gen.coroutine
+    def _onFlush(self):
+        respawn = True
+        while respawn:
+            qsize = self._send_queue.qsize()
+            if qsize:
+                send_batch = [
+                    self._send_queue.get_nowait()
+                    for pos in range(qsize)
+                ]
+            else:
+                # This will sleep until an item shows up in the queue
+                item = yield self._send_queue.get()
+                send_batch = [item]
+            response = yield self.emitter.send_message_batch(*send_batch)
+            if response.Failed:
+                for req in response.Failed:
+                    self.logger.error('Message failed to send: %s', req.Id)
+                self.output_error.set()
+                respawn = False
+
+    @gen.coroutine
+    def close(self):
+        self.state = CLOSING
+
+    def emit_nowait(self, msg):
+        self.logger.debug("Drain emitting")
+        self._send_queue.put_nowait(msg)
+
+    @gen.coroutine
+    def emit(self, msg, timeout=None):
+        yield self._send_queue.put(msg, timeout)
+
+
+@implementer(IDrain)
 class StreamDrain(object):
     """Implementation of IDrain that writes to stdout.
     """

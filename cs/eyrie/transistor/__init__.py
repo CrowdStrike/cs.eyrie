@@ -21,6 +21,7 @@ from cs.eyrie.transistor.drain import (
     RDKafkaDrain,
     RoutingDrain,
     StreamDrain,
+    SQSDrain,
     ZMQDrain,
 )
 from cs.eyrie.transistor.gate import (
@@ -32,6 +33,7 @@ from cs.eyrie.transistor.source import (
     PailfileSource,
     QueueSource,
     RDKafkaSource,
+    SQSSource,
     StreamSource,
     ZMQSource,
 )

@@ -6,7 +6,7 @@ from cs.eyrie.transistor import CLOSING, RUNNING, TRANSIENT_ERRORS
 from datadog import statsd
 from tornado import gen
 from tornado.locks import Event
-from tornado.queues import QueueEmpty, QueueFull
+from tornado.queues import Queue, QueueEmpty, QueueFull
 from zope.interface import implementer
 
 
@@ -203,6 +203,87 @@ class RDKafkaSource(object):
                         iterations = 0
                 else:
                     break
+
+
+@implementer(ISource)
+class SQSSource(object):
+    """Implementation of ISource that receives messages from a SQS queue.
+    """
+
+    max_delete_delay = 5
+
+    def __init__(self, logger, loop, gate, sqs_client,
+                 metric_prefix='source'):
+        self.gate = gate
+        self.collector = sqs_client
+        self.logger = logger
+        self.loop = loop
+        self.metric_prefix = metric_prefix
+        self.end_of_input = Event()
+        self.input_error = Event()
+        self.state = RUNNING
+        self._delete_queue = Queue()
+        self._flush_handle = None
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+        self.loop.spawn_callback(self.onInput)
+        self.loop.spawn_callback(self._onDelete)
+
+    @gen.coroutine
+    def close(self):
+        self.state = CLOSING
+        self.logger.warning('Closing source')
+        yield self._flush_delete_batch()
+
+    @gen.coroutine
+    def _flush_delete_batch(self):
+        qsize = self._delete_queue.qsize()
+        if not qsize:
+            return
+        delete_batch = [
+            self._delete_queue.get_nowait()
+            for pos in range(qsize)
+        ]
+        response = yield self.collector.delete_message_batch(*delete_batch)
+        if response.Failed:
+            for req in response.Failed:
+                self.logger.error('Message failed to delete: %s', req.Id)
+            self.input_error.set()
+        if self._flush_handle is not None:
+            self.loop.remove_timeout(self._flush_handle)
+            self._flush_handle = None
+
+    @gen.coroutine
+    def _onDelete(self):
+        while True:
+            qsize = self._delete_queue.qsize()
+            if qsize >= self.collector.max_messages:
+                yield self._flush_delete_batch()
+            elif qsize and self._flush_handle is None:
+                handle = self.loop.call_later(self.max_delete_delay,
+                                              self._flush_delete_batch)
+                self._flush_handle = handle
+            yield gen.sleep(self.max_delete_delay)
+
+    @gen.coroutine
+    def onInput(self):
+        respawn = True
+        while respawn:
+            try:
+                response = yield self.collector.receive_message_batch()
+                for position, msg in enumerate(response.Messages):
+                    try:
+                        self.gate.put_nowait(msg)
+                    except QueueFull:
+                        self.logger.debug('Gate queue full; yielding')
+                        yield self.gate.put(msg)
+                    self._delete_queue.put_nowait(msg)
+                    statsd.increment('%s.queued' % self.metric_prefix,
+                                     tags=[self.sender_tag])
+            except Exception as err:
+                self.logger.exception(err)
+                self.input_error.set()
+                respawn = False
 
 
 @implementer(ISource)
