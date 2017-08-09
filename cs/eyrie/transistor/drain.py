@@ -2,7 +2,10 @@ import zmq
 from collections import namedtuple
 from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
 from cs.eyrie.interfaces import IDrain, IKafka
-from cs.eyrie.transistor import CLOSED, CLOSING, RUNNING, TRANSIENT_ERRORS
+from cs.eyrie.transistor import (
+    CLOSED, CLOSING, RUNNING, TRANSIENT_ERRORS,
+    SQSError,
+)
 from datetime import datetime
 from os import linesep
 from tornado import gen
@@ -103,7 +106,7 @@ class RDKafkaDrain(object):
                                                                  kafka_msg),
             )
         except BufferError:
-            raise QueueFull
+            raise QueueFull()
 
     @gen.coroutine
     def emit(self, msg, retry_timeout=INITIAL_TIMEOUT):
@@ -199,6 +202,97 @@ class RoutingDrain(object):
 
 
 @implementer(IDrain)
+class SQSDrain(object):
+    """Implementation of IDrain that writes to an AWS SQS queue.
+    """
+
+    def __init__(self, logger, loop, sqs_client,
+                 metric_prefix='emitter'):
+        self.emitter = sqs_client
+        self.logger = logger
+        self.loop = loop
+        self.metric_prefix = metric_prefix
+        self.output_error = Event()
+        self.state = RUNNING
+        self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
+                                            self.__class__.__name__)
+        self._send_queue = Queue()
+        self._should_flush_queue = Event()
+        self._flush_handle = None
+        self.loop.spawn_callback(self._onSend)
+
+    @gen.coroutine
+    def _flush_send_batch(self, batch_size):
+        send_batch = [
+            self._send_queue.get_nowait()
+            for pos in range(min(batch_size, self.emitter.max_messages))
+        ]
+        try:
+            response = yield self.emitter.send_message_batch(*send_batch)
+        except SQSError as err:
+            self.logger.exception('Error encountered flushing data to SQS: %s',
+                                  err)
+            self.output_error.set()
+            for msg in send_batch:
+                self._send_queue.put_nowait(msg)
+        else:
+            if response.Failed:
+                self.output_error.set()
+                for req in response.Failed:
+                    self.logger.error('Message failed to send: %s', req.Id)
+                    self._send_queue.put_nowait(req)
+
+    @gen.coroutine
+    def _onSend(self):
+        respawn = True
+        while respawn:
+            qsize = self._send_queue.qsize()
+            # This will keep flushing until clear,
+            # including items that show up in between flushes
+            while qsize > 0:
+                yield self._flush_send_batch(qsize)
+                qsize = self._send_queue.qsize()
+            # We've cleared the backlog, remove any possible future flush
+            if self._flush_handle:
+                self.loop.remove_timeout(self._flush_handle)
+                self._flush_handle = None
+            self._should_flush_queue.clear()
+            yield self._should_flush_queue.wait()
+
+    @gen.coroutine
+    def close(self):
+        self.state = CLOSING
+        yield self._send_queue.join()
+
+    def emit_nowait(self, msg):
+        if self._send_queue.qsize() >= self.emitter.max_messages:
+            # Signal flush
+            self._should_flush_queue.set()
+            raise QueueFull()
+        elif self._flush_handle is None:
+            # Ensure we flush messages at least by MAX_TIMEOUT
+            self._flush_handle = self.loop.add_timeout(
+                MAX_TIMEOUT,
+                lambda: self._should_flush_queue.set(),
+            )
+        self.logger.debug("Drain emitting")
+        self._send_queue.put_nowait(msg)
+
+    @gen.coroutine
+    def emit(self, msg, timeout=None):
+        if self._send_queue.qsize() >= self.emitter.max_messages:
+            # Signal flush
+            self._should_flush_queue.set()
+        elif self._flush_handle is None:
+            # Ensure we flush messages at least by MAX_TIMEOUT
+            self._flush_handle = self.loop.add_timeout(
+                MAX_TIMEOUT,
+                lambda: self._should_flush_queue.set(),
+            )
+        yield self._send_queue.put(msg, timeout)
+
+
+@implementer(IDrain)
 class StreamDrain(object):
     """Implementation of IDrain that writes to stdout.
     """
@@ -278,7 +372,7 @@ class ZMQDrain(object):
         try:
             self.emitter.send_multipart(msg, zmq.NOBLOCK)
         except zmq.Again:
-            raise QueueFull
+            raise QueueFull()
 
     @gen.coroutine
     def emit(self, msg, retry_timeout=INITIAL_TIMEOUT):

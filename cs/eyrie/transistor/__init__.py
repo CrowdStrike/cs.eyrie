@@ -21,6 +21,7 @@ from cs.eyrie.transistor.drain import (
     RDKafkaDrain,
     RoutingDrain,
     StreamDrain,
+    SQSDrain,
     ZMQDrain,
 )
 from cs.eyrie.transistor.gate import (
@@ -32,10 +33,18 @@ from cs.eyrie.transistor.source import (
     PailfileSource,
     QueueSource,
     RDKafkaSource,
+    SQSSource,
     StreamSource,
     ZMQSource,
 )
-from cs.eyrie.transistor.sqs import AsyncSQSClient, build_send_message_request
+from cs.eyrie.transistor.sqs import (
+    AsyncSQSClient,
+    SendMessageRequestEntry,
+    SQSError,
+    build_send_message_request,
+    deserialize_send_message_request,
+    serialize_send_message_request,
+)
 
 
 def get_last_element(msg):

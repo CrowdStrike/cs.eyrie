@@ -21,6 +21,16 @@ class SQSError(Exception):
         self.error_type = error_type
         self.detail = detail
 
+    def __str__(self):
+        return self.__unicode__.encode('utf8')
+
+    def __unicode__(self):
+        txt = u'SQSError(message="{}", code="{}", error_type="{}", detail="{}")'
+        return txt.format(self.message,
+                          self.code,
+                          self.error_type,
+                          self.detail)
+
 
 BatchResponse = namedtuple(
     'BatchResponse', [
@@ -136,7 +146,7 @@ class AsyncSQSClient(object):
             api_params['Entries'] = entries
 
             response = yield self._operate(op_name, api_params, **req_kwargs)
-            for success in response['Successful']:
+            for success in response.get('Successful', []):
                 # Populate our return data with objects passed in
                 result['Successful'].append([
                     sre
@@ -148,8 +158,7 @@ class AsyncSQSClient(object):
                 HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
                 RequestId=response['ResponseMetadata']['RequestId'],
             ))
-            failed = response.get('Failed', [])
-            for err in failed:
+            for err in response.get('Failed', []):
                 entry = [
                     entry
                     for entry in req_entries
@@ -180,10 +189,12 @@ class AsyncSQSClient(object):
                                                      raise_error=False)
         parsed_response = self._parse_response(op_model, http_response)
         error = parsed_response.get('Error', {})
-        error_code = error.get('Code')
         if http_response.code > 200 or error:
             if retry and attempt <= self.retry_attempts and \
-               error_code in self.retry_exceptions:
+               max([
+                   ename in http_response.body
+                   for ename in self.retry_exceptions
+               ]):
                 req_kwargs['retry'] = retry
                 req_kwargs['attempt'] = attempt
                 # https://www.awsarchitectureblog.com/2015/03/backoff.html
