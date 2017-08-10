@@ -236,7 +236,8 @@ class Actuator(Vassal):
             drain,
             transducer,
         )
-        if kwargs['input'][0] == '-':
+
+        if not kwargs['input'][0].scheme and kwargs['input'][0].path == '-':
             del self.channels['input']
             source = self.init_stream_source(**kwargs)
         elif kwargs['input'][0].scheme == 'file':
