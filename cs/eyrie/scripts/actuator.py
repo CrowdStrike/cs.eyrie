@@ -48,33 +48,6 @@ class Actuator(Vassal):
     title = "(rf:actuator)"
     app_name = 'actuator'
     args = [
-        # Kafka options
-        (
-            ('--bootstrap-servers',),
-            dict(
-                help="Initial list of Kafka brokers",
-                required=False,
-                default='127.0.0.1:9092',
-                nargs='+',
-            )
-        ),
-        (
-            ('--group-name',),
-            dict(
-                help="Kafka consumer group name",
-                required=False,
-            )
-        ),
-        (
-            ('--offset-reset',),
-            dict(
-                help="Action to take when there is no initial offset in offset store or the desired offset is out of range",
-                required=False,
-                choices=['smallest', 'largest'],
-                default='largest',
-            )
-        ),
-        # Base options
         (
             ('--input',),
             dict(
@@ -99,14 +72,6 @@ class Actuator(Vassal):
                 required=False,
                 default=500,
                 type=int,
-            )
-        ),
-        (
-            ('--partition-strategy',),
-            dict(
-                help="Partition assignment strategy",
-                choices=['range', 'roundrobin'],
-                default='roundrobin',
             )
         ),
         (
@@ -135,37 +100,70 @@ class Actuator(Vassal):
         self.transistor = self.init_transistor(**kwargs)
 
     def init_kafka_drain(self, **kwargs):
+        params = parse_qs(kwargs['output'].query)
+        bootstrap_servers = params['bootstrap_servers']
+        list_bootstrap_servers = aslist(bootstrap_servers[0].replace(',', ' '))
+        if len(list_bootstrap_servers) > 1:
+            bootstrap_servers = list_bootstrap_servers
+        else:
+            bootstrap_servers = params['bootstrap_servers']
+
         return RDKafkaDrain(
             self.logger,
             self.loop,
             Producer({
                 'api.version.request': True,
-                'bootstrap.servers': ','.join(kwargs['bootstrap_servers']),
+                'bootstrap.servers': ','.join(bootstrap_servers),
                 'default.topic.config': {'produce.offset.report': True},
                 # The lambda is necessary to return control to the main Tornado
                 # thread
                 'error_cb': lambda err: self.loop.add_callback(self.onKafkaError,
                                                                err),
-                'group.id': kwargs['group_name'],
+                'group.id': params['group_name'][0],
                 # See: https://github.com/edenhill/librdkafka/issues/437
                 'log.connection.close': False,
                 'queue.buffering.max.ms': 1000,
                 'queue.buffering.max.messages': kwargs['inflight'],
             }),
-            kwargs['output'],
+            kwargs['output'].netloc,
         )
 
     def init_kafka_source(self, **kwargs):
+        params = {}
+        for parsed_url in kwargs['input']:
+            url_params = parse_qs(parsed_url.query)
+            for key, val in url_params.items():
+                params.setdefault(key, []).extend(val)
+
+        bootstrap_servers = params['bootstrap_servers']
+        list_bootstrap_servers = aslist(bootstrap_servers[0].replace(',', ' '))
+        if len(list_bootstrap_servers) > 1:
+            bootstrap_servers = list_bootstrap_servers
+        else:
+            bootstrap_servers = params['bootstrap_servers']
+
+        offset_reset = params.get('offset_reset')
+        if offset_reset:
+            offset_reset = offset_reset[0]
+        else:
+            offset_reset = 'largest'
+
+        strategy = params.get('partition_strategy')
+        if strategy:
+            strategy = strategy[0]
+        else:
+            strategy = 'roundrobin'
+
         return RDKafkaSource(
             self.logger,
             self.loop,
             kwargs['gate'],
             Consumer({
                 'api.version.request': True,
-                'bootstrap.servers': ','.join(kwargs['bootstrap_servers']),
+                'bootstrap.servers': ','.join(bootstrap_servers),
                 #'debug': 'all',
                 'default.topic.config': {
-                    'auto.offset.reset': kwargs['offset_reset'],
+                    'auto.offset.reset': offset_reset,
                     'enable.auto.commit': True,
                     'offset.store.method': 'broker',
                     'produce.offset.report': True,
@@ -175,14 +173,14 @@ class Actuator(Vassal):
                 # thread
                 'error_cb': lambda err: self.loop.add_callback(self.onKafkaError,
                                                                err),
-                'group.id': kwargs['group_name'],
+                'group.id': params['group_name'][0],
                 # See: https://github.com/edenhill/librdkafka/issues/437
                 'log.connection.close': False,
                 'max.in.flight': kwargs['inflight'],
-                'partition.assignment.strategy': kwargs['partition_strategy'],
+                'partition.assignment.strategy': strategy,
                 'queue.buffering.max.ms': 1000,
             }),
-            *kwargs['input']
+            *[url.netloc for url in kwargs['input']]
         )
 
     def init_pailfile_source(self, **kwargs):
@@ -245,7 +243,7 @@ class Actuator(Vassal):
             source = self.init_pailfile_source(**kwargs)
         elif kwargs['input'][0].scheme.lower() in ZMQ_TRANSPORTS:
             source = self.init_zmq_source(**kwargs)
-        else:
+        elif kwargs['input'][0].scheme == 'kafka':
             del self.channels['input']
             source = self.init_kafka_source(**kwargs)
 
