@@ -188,7 +188,7 @@ class Actuator(Vassal):
             self.logger,
             self.loop,
             kwargs['gate'],
-            SequenceFile.Reader(kwargs['input'][0]),
+            SequenceFile.Reader(kwargs['input'][0].path),
         )
 
     def init_stream_drain(self, **kwargs):
@@ -207,7 +207,8 @@ class Actuator(Vassal):
         )
 
     def init_transistor(self, **kwargs):
-        if not kwargs['output'].scheme and kwargs['output'].path == '-':
+        if kwargs['output'].scheme == 'file' and \
+           kwargs['output'].netloc == '-':
             del self.channels['output']
             drain = self.init_stream_drain(**kwargs)
         elif kwargs['output'].scheme.lower() in ZMQ_TRANSPORTS:
@@ -238,7 +239,7 @@ class Actuator(Vassal):
         if kwargs['input'][0] == '-':
             del self.channels['input']
             source = self.init_stream_source(**kwargs)
-        elif isfile(kwargs['input'][0]):
+        elif kwargs['input'][0].scheme == 'file':
             del self.channels['input']
             source = self.init_pailfile_source(**kwargs)
         elif kwargs['input'][0].scheme.lower() in ZMQ_TRANSPORTS:
