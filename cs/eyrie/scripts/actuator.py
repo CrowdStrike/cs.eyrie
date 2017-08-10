@@ -2,14 +2,16 @@ import sys
 from urlparse import parse_qs, urlparse, urlunparse
 
 import zmq
+from botocore.session import get_session
 from confluent_kafka import Consumer, Producer
 from cs.eyrie import Vassal, ZMQChannel, script_main
 from cs.eyrie.interfaces import IKafka
 from cs.eyrie.transistor import (
     CLOSED, TRANSIENT_ERRORS,
-    PailfileSource, RDKafkaSource, StreamSource, ZMQSource,
+    AsyncSQSClient,
+    PailfileSource, RDKafkaSource, SQSSource, StreamSource, ZMQSource,
     Gate, Transistor,
-    RDKafkaDrain, StreamDrain, ZMQDrain,
+    RDKafkaDrain, SQSDrain, StreamDrain, ZMQDrain,
 )
 try:
     from hadoop.io import SequenceFile
@@ -18,6 +20,7 @@ except ImportError:
 from pyramid.path import DottedNameResolver
 from pyramid.settings import asbool, aslist
 from tornado import gen
+from tornado.httpclient import AsyncHTTPClient
 
 
 # http://api.zeromq.org/4-2:zmq-connect
@@ -191,6 +194,52 @@ class Actuator(Vassal):
             SequenceFile.Reader(kwargs['input'][0].path),
         )
 
+    def _init_sqs_client(self, parsed_url, **kwargs):
+        params = parse_qs(parsed_url.query)
+        session = get_session()
+        queue_url = params.get('queue_url')
+        if queue_url:
+            queue_url = queue_url[0]
+        else:
+            queue_url = None
+
+        region = params.get('region')
+        if region:
+            region = region[0]
+        else:
+            region = None
+
+        return AsyncSQSClient(
+            session,
+            queue_name=parsed_url.netloc,
+            queue_url=queue_url,
+            region=region,
+            http_client=AsyncHTTPClient(
+                self.loop,
+                force_instance=True,
+                defaults=dict(
+                    request_timeout=AsyncSQSClient.long_poll_timeout+5,
+                )
+            )
+        )
+
+    def init_sqs_drain(self, **kwargs):
+        sqs_client = self._init_sqs_client(kwargs['output'], **kwargs)
+        return SQSDrain(
+            self.logger,
+            self.loop,
+            sqs_client,
+        )
+
+    def init_sqs_source(self, **kwargs):
+        sqs_client = self._init_sqs_client(kwargs['input'][0], **kwargs)
+        return SQSSource(
+            self.logger,
+            self.loop,
+            kwargs['gate'],
+            sqs_client,
+        )
+
     def init_stream_drain(self, **kwargs):
         return StreamDrain(
             self.logger,
@@ -248,6 +297,13 @@ class Actuator(Vassal):
         elif kwargs['input'][0].scheme == 'kafka':
             del self.channels['input']
             source = self.init_kafka_source(**kwargs)
+        elif kwargs['input'][0].scheme == 'sqs':
+            del self.channels['input']
+            source = self.init_sqs_source(**kwargs)
+        else:
+            raise ValueError(
+                'Unsupported source scheme: {}'.format(kwargs['input'].scheme)
+            )
 
         return Transistor(
             self.logger,
