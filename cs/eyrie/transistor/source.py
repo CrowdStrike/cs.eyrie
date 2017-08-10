@@ -159,7 +159,7 @@ class RDKafkaSource(object):
         """
         respawn = True
         iterations = 0
-        while True:
+        while respawn:
             iterations += 1
             try:
                 msg = self.collector.poll(0)
@@ -201,8 +201,6 @@ class RDKafkaSource(object):
                     elif iterations > self.max_unyielded:
                         yield gen.moment
                         iterations = 0
-                else:
-                    break
 
 
 @implementer(ISource)
@@ -383,7 +381,7 @@ class ZMQSource(object):
         # reading from the socket will be blocked while the queue is full.
         respawn = True
         iterations = 0
-        while True:
+        while respawn:
             iterations += 1
             try:
                 msg = self.collector.recv_multipart(zmq.NOBLOCK)
@@ -407,5 +405,3 @@ class ZMQSource(object):
                     elif iterations > self.max_unyielded:
                         yield gen.moment
                         iterations = 0
-                else:
-                    break
