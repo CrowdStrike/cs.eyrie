@@ -1,5 +1,5 @@
 import sys
-from os.path import isfile
+from urlparse import parse_qs, urlparse, urlunparse
 
 import zmq
 from confluent_kafka import Consumer, Producer
@@ -16,7 +16,19 @@ try:
 except ImportError:
     SequenceFile = None
 from pyramid.path import DottedNameResolver
+from pyramid.settings import asbool, aslist
 from tornado import gen
+
+
+# http://api.zeromq.org/4-2:zmq-connect
+ZMQ_TRANSPORTS = {
+    'epgm',
+    'inproc',
+    'ipc',
+    'pgm,'
+    'tcp',
+    'vmci',
+}
 
 
 class Actuator(Vassal):
@@ -104,6 +116,7 @@ class Actuator(Vassal):
                 help="Source to be used as input",
                 required=True,
                 nargs='+',
+                type=urlparse,
             )
         ),
         (
@@ -111,6 +124,7 @@ class Actuator(Vassal):
             dict(
                 help="Destination of input data",
                 required=True,
+                type=urlparse,
             )
         ),
         (
