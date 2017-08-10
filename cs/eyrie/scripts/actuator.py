@@ -48,41 +48,6 @@ class Actuator(Vassal):
     title = "(rf:actuator)"
     app_name = 'actuator'
     args = [
-        # ZMQ options
-        (
-            ('--bind-input',),
-            dict(
-                help="Bind ZMQ input socket",
-                default=False,
-                action='store_true',
-            )
-        ),
-        (
-            ('--bind-output',),
-            dict(
-                help="Bind ZMQ output socket",
-                default=False,
-                action='store_true',
-            )
-        ),
-        (
-            ('--input-socket-type',),
-            dict(
-                help="Which ZMQ socket type to use for input",
-                required=False,
-                choices=['pull', 'sub'],
-                default='pull',
-            )
-        ),
-        (
-            ('--output-socket-type',),
-            dict(
-                help="Which ZMQ socket type to use for output",
-                required=False,
-                choices=['push', 'pub'],
-                default='push',
-            )
-        ),
         # Kafka options
         (
             ('--bootstrap-servers',),
@@ -244,14 +209,21 @@ class Actuator(Vassal):
         )
 
     def init_transistor(self, **kwargs):
-        if kwargs['output'] == '-':
+        if not kwargs['output'].scheme and kwargs['output'].path == '-':
             del self.channels['output']
             drain = self.init_stream_drain(**kwargs)
-        elif '://' in kwargs['output']:
+        elif kwargs['output'].scheme.lower() in ZMQ_TRANSPORTS:
             drain = self.init_zmq_drain(**kwargs)
-        else:
+        elif kwargs['output'].scheme == 'kafka':
             del self.channels['output']
             drain = self.init_kafka_drain(**kwargs)
+        elif kwargs['output'].scheme == 'sqs':
+            del self.channels['output']
+            drain = self.init_sqs_drain(**kwargs)
+        else:
+            raise ValueError(
+                'Unsupported drain scheme: {}'.format(kwargs['output'].scheme)
+            )
 
         # The gate "has" a drain;
         # a source "has" a gate
@@ -271,7 +243,7 @@ class Actuator(Vassal):
         elif isfile(kwargs['input'][0]):
             del self.channels['input']
             source = self.init_pailfile_source(**kwargs)
-        elif '://' in kwargs['input'][0]:
+        elif kwargs['input'][0].scheme.lower() in ZMQ_TRANSPORTS:
             source = self.init_zmq_source(**kwargs)
         else:
             del self.channels['input']
@@ -285,19 +257,44 @@ class Actuator(Vassal):
             drain,
         )
 
-    def init_zmq_drain(self, **kwargs):
+    def _init_zmq_socket(self, parsed_url, channel, **kwargs):
+        # Reconstruct ZMQ endpoint, sans query parameters
+        endpoint = urlunparse((parsed_url.scheme,
+                               parsed_url.netloc,
+                               parsed_url.path,
+                               None, None, None))
+        params = parse_qs(parsed_url.query)
+        bind = params.get('bind')
+        if bind:
+            bind = asbool(bind[0])
+        else:
+            bind = False
+        socket_type = params.get('socket_type')
+        if socket_type:
+            socket_type = socket_type[0]
+        else:
+            socket_type = kwargs['default_socket_type']
         channel = ZMQChannel(**dict(
-            vars(self.channels['output']),
-            bind=kwargs['bind_output'],
-            endpoint=kwargs['output'],
-            socket_type=getattr(zmq, kwargs['output_socket_type'].upper()),
+            vars(channel),
+            bind=bind,
+            endpoint=endpoint,
+            socket_type=getattr(zmq, socket_type.upper()),
         ))
         socket = self.context.socket(channel.socket_type)
+        if channel.socket_type == zmq.SUB:
+            socket.setsockopt(zmq.SUBSCRIBE, '')
         socket.set_hwm(kwargs['inflight'])
-        if kwargs['bind_output']:
-            socket.bind(kwargs['output'])
+        if bind:
+            socket.bind(endpoint)
         else:
-            socket.connect(kwargs['output'])
+            socket.connect(endpoint)
+        return socket
+
+    def init_zmq_drain(self, **kwargs):
+        kwargs['default_socket_type'] = 'push'
+        socket = self._init_zmq_socket(kwargs['output'],
+                                       self.channels['output'],
+                                       **kwargs)
         return ZMQDrain(
             self.logger,
             self.loop,
@@ -305,20 +302,10 @@ class Actuator(Vassal):
         )
 
     def init_zmq_source(self, **kwargs):
-        channel = ZMQChannel(**dict(
-            vars(self.channels['input']),
-            bind=kwargs['bind_input'],
-            endpoint=kwargs['input'][0],
-            socket_type=getattr(zmq, kwargs['input_socket_type'].upper()),
-        ))
-        socket = self.context.socket(channel.socket_type)
-        if channel.socket_type == zmq.SUB:
-            socket.setsockopt(zmq.SUBSCRIBE, '')
-        socket.set_hwm(kwargs['inflight'])
-        if kwargs['bind_input']:
-            socket.bind(kwargs['input'][0])
-        else:
-            socket.connect(kwargs['input'][0])
+        kwargs['default_socket_type'] = 'pull'
+        socket = self._init_zmq_socket(kwargs['input'][0],
+                                       self.channels['input'],
+                                       **kwargs)
         return ZMQSource(
             self.logger,
             self.loop,
