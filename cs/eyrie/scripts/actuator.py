@@ -1,4 +1,5 @@
 import sys
+import urlparse as urlparse_module
 from urlparse import parse_qs, urlparse, urlunparse
 
 import zmq
@@ -32,6 +33,12 @@ ZMQ_TRANSPORTS = {
     'tcp',
     'vmci',
 }
+
+
+def _register_scheme(scheme):
+    for method in filter(lambda s: s.startswith('uses_'),
+                         dir(urlparse_module)):
+        getattr(urlparse_module, method).append(scheme)
 
 
 class Actuator(Vassal):
@@ -393,6 +400,13 @@ class Actuator(Vassal):
 
 
 def main():
+    # Execute this before script_main, to avoid polluting on simple module
+    # import but also to be present before argparse does its thing
+    _register_scheme('kafka')
+    _register_scheme('sqs')
+    for scheme in ZMQ_TRANSPORTS:
+        _register_scheme(scheme)
+
     actuator = script_main(Actuator, None, start_loop=False)
     actuator.join()
     actuator.loop.start()
