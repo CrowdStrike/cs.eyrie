@@ -227,15 +227,17 @@ def vmprof_signal_handler(signal, frame):
     import vmprof
     curr_proc = multiprocessing.current_process()
     logger = logging.getLogger('eyrie.script.profile')
-    if vmprof.is_enabled():
+    if getattr(curr_proc, 'vmprof_enabled', False):
         logger.warn('Disabling vmprof, output path: %s',
                     curr_proc.profile_output_path)
         vmprof.disable()
+        curr_proc.vmprof_enabled = False
     else:
         fileno, output_path = mkstemp(dir=curr_proc.profile_output_dir)
         curr_proc.profile_output_path = output_path
         logger.warn('Enabling vmprof, output path: %s', output_path)
         vmprof.enable(fileno)
+        curr_proc.vmprof_enabled = True
 
 
 def script_main(script_class, cache_region, **script_kwargs):
