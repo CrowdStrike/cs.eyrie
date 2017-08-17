@@ -55,8 +55,7 @@ class PailfileSource(object):
             result = self.collector.nextKey(key)
             if result:
                 yield self.gate.put(key.toString())
-                self.logger.info('PailfileSource queued message: %d',
-                                 self.gate.qsize())
+                self.logger.info('PailfileSource queued message')
                 statsd.increment('%s.queued' % self.metric_prefix,
                                  tags=[self.sender_tag])
             else:
