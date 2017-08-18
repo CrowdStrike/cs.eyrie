@@ -423,3 +423,36 @@ def build_send_message_request(message_body,
         DelaySeconds=int(delay_seconds),
         MessageAttributes=MessageAttributes
     )
+
+
+def deserialize_send_message_request(frames):
+    """Deserialize a SendMessageRequestEntry from frames on a ZMQ socket.
+    """
+    from json import loads
+    id_pos, body_pos, delay_pos, attr_pos = [
+        SendMessageRequestEntry._fields.index(attr_name)
+        for attr_name in ('Id',
+                          'MessageBody',
+                          'DelaySeconds',
+                          'MessageAttributes')
+    ]
+    return SendMessageRequestEntry(
+        Id=frames[id_pos],
+        MessageBody=frames[body_pos],
+        DelaySeconds=int(frames[delay_pos]),
+        MessageAttributes=loads(frames[attr_pos]),
+    )
+
+
+def serialize_send_message_request(req):
+    """Serialize a SendMessageRequestEntry to frames suitable to
+    be sent over the wire on a ZMQ socket.
+    """
+    from json import dumps
+    assert isinstance(req, SendMessageRequestEntry)
+    return SendMessageRequestEntry(
+        Id=req.Id,
+        MessageBody=req.MessageBody,
+        DelaySeconds=str(req.DelaySeconds),
+        MessageAttributes=dumps(req.MessageAttributes)
+    )
