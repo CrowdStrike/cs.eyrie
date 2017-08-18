@@ -20,6 +20,7 @@ from cs.eyrie.transistor.drain import (
     QueueDrain,
     RDKafkaDrain,
     RoutingDrain,
+    RoutingMessage,
     StreamDrain,
     SQSDrain,
     ZMQDrain,
@@ -30,6 +31,7 @@ from cs.eyrie.transistor.gate import (
     Transistor,
 )
 from cs.eyrie.transistor.source import (
+    KafkaMessage,
     PailfileSource,
     QueueSource,
     RDKafkaSource,
