@@ -4,7 +4,6 @@ from urlparse import parse_qs, urlparse, urlunparse
 
 import zmq
 from botocore.session import get_session
-from confluent_kafka import Consumer, Producer
 from cs.eyrie import Vassal, ZMQChannel, script_main
 from cs.eyrie.interfaces import IKafka
 from cs.eyrie.transistor import (
@@ -110,6 +109,7 @@ class Actuator(Vassal):
         self.transistor = self.init_transistor(**kwargs)
 
     def init_kafka_drain(self, **kwargs):
+        from confluent_kafka import Producer
         params = parse_qs(kwargs['output'].query)
         bootstrap_servers = params['bootstrap_servers']
         list_bootstrap_servers = aslist(bootstrap_servers[0].replace(',', ' '))
@@ -139,6 +139,7 @@ class Actuator(Vassal):
         )
 
     def init_kafka_source(self, **kwargs):
+        from confluent_kafka import Consumer
         params = {}
         for parsed_url in kwargs['input']:
             url_params = parse_qs(parsed_url.query)
