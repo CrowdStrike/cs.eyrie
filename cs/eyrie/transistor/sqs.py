@@ -250,7 +250,7 @@ class AsyncSQSClient(object):
         # The following reverse-engineerd from:
         # botocore.endpoint.Endpoint._get_response
         # Mimic requests' Response
-        http_response.content = http_response.body
+        http_response.content = http_response.body or u''
         http_response.status_code = http_response.code
         response_dict = convert_to_response_dict(http_response,
                                                  op_model)
