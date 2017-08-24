@@ -1,7 +1,6 @@
 from collections import deque, namedtuple
 from datadog import statsd
 from datetime import datetime
-from cs.eyrie.config import INITIAL_TIMEOUT
 from cs.eyrie.interfaces import IGate, ITransistor
 from cs.eyrie.transistor import (
     CLOSED, CLOSING, DEFAULT_TRANSDUCER_CONCURRENCY, RUNNING,
@@ -221,7 +220,7 @@ class Gate(object):
             self.drain.emit_nowait(outgoing_msg)
 
     @gen.coroutine
-    def put(self, msg, retry_timeout=INITIAL_TIMEOUT):
+    def put(self, msg, retry_timeout=None):
         outgoing_msg = self.transducer(msg)
         self._increment()
         if outgoing_msg is None:
