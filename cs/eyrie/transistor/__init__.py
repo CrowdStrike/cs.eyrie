@@ -16,6 +16,14 @@ except ImportError:
     TRANSIENT_ERRORS = set()
 else:
     TRANSIENT_ERRORS = set([KafkaError._ALL_BROKERS_DOWN, KafkaError._TRANSPORT])
+from cs.eyrie.transistor.sqs import (
+    AsyncSQSClient,
+    SendMessageRequestEntry,
+    SQSError,
+    build_send_message_request,
+    deserialize_send_message_request,
+    serialize_send_message_request,
+)
 from cs.eyrie.transistor.drain import (
     QueueDrain,
     RDKafkaDrain,
@@ -38,14 +46,6 @@ from cs.eyrie.transistor.source import (
     SQSSource,
     StreamSource,
     ZMQSource,
-)
-from cs.eyrie.transistor.sqs import (
-    AsyncSQSClient,
-    SendMessageRequestEntry,
-    SQSError,
-    build_send_message_request,
-    deserialize_send_message_request,
-    serialize_send_message_request,
 )
 
 
