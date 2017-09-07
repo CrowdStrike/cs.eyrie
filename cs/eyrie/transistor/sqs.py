@@ -22,7 +22,7 @@ class SQSError(Exception):
         self.detail = detail
 
     def __str__(self):
-        return self.__unicode__.encode('utf8')
+        return self.__unicode__().encode('utf8')
 
     def __unicode__(self):
         txt = u'SQSError(message="{}", code="{}", error_type="{}", detail="{}")'
