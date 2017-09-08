@@ -1,6 +1,7 @@
 from collections import deque, namedtuple
 from datadog import statsd
 from datetime import datetime
+from cs.eyrie.config import MAX_TIMEOUT
 from cs.eyrie.interfaces import IGate, ITransistor
 from cs.eyrie.transistor import (
     CLOSED, CLOSING, DEFAULT_TRANSDUCER_CONCURRENCY, RUNNING,
@@ -38,13 +39,15 @@ class Transistor(object):
         self.state = RUNNING
 
     @gen.coroutine
-    def close(self, msg_prefix):
+    def close(self, msg_prefix, timeout=MAX_TIMEOUT):
         try:
             self.state = CLOSING
             self.logger.error('%s; closing source', msg_prefix)
-            yield self.source.close()
+            yield self.source.close(timeout)
             self.logger.error('%s; closing drain', msg_prefix)
-            yield self.drain.close()
+            yield self.drain.close(timeout)
+        except gen.TimeoutError:
+            self.logger.warning('Wait timeout occurred; aborting')
         except Exception as err:
             self.logger.exception(err)
         finally:

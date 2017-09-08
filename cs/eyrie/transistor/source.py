@@ -45,9 +45,10 @@ class PailfileSource(object):
         self.loop.spawn_callback(self.onInput)
 
     @gen.coroutine
-    def close(self):
+    def close(self, timeout=None):
         self.state = CLOSING
         self.logger.warning('Closing source')
+        # Unable to easily enforce timeout for pailfiles
         self.collector.close()
 
     @gen.coroutine
@@ -149,7 +150,7 @@ class RDKafkaSource(object):
         self.loop.spawn_callback(self.onInput)
 
     @gen.coroutine
-    def close(self):
+    def close(self, timeout=None):
         self.state = CLOSING
         self.logger.warning('Closing source')
         self.collector.close()
@@ -230,10 +231,10 @@ class SQSSource(object):
         self.loop.spawn_callback(self._onDelete)
 
     @gen.coroutine
-    def close(self):
+    def close(self, timeout=None):
         self.state = CLOSING
         self.logger.warning('Closing source')
-        yield self._delete_queue.join()
+        yield self._delete_queue.join(timeout)
 
     @gen.coroutine
     def _flush_delete_batch(self, batch_size):
@@ -316,9 +317,10 @@ class StreamSource(object):
         self.loop.spawn_callback(self.onInput)
 
     @gen.coroutine
-    def close(self):
+    def close(self, timeout=None):
         self.state = CLOSING
         self.logger.warning('Closing source')
+        # Unable to easily timeout a stream
         self.collector.close()
 
     @gen.coroutine
@@ -366,7 +368,7 @@ class ZMQSource(object):
 
     def _handle_events(self, fd, events):
         if events & self.loop.ERROR:
-            self.logger.error('Error polling socket for writability')
+            self.logger.error('Error polling socket for readability')
         elif events & self.loop.READ:
             self.loop.remove_handler(self.collector)
             self._readable.set()
@@ -380,7 +382,7 @@ class ZMQSource(object):
         self._readable.clear()
 
     @gen.coroutine
-    def close(self):
+    def close(self, timeout=None):
         self.state = CLOSING
         self.logger.warning('Closing source')
         self.collector.close()

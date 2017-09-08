@@ -39,10 +39,10 @@ class QueueDrain(object):
                                             self.__class__.__name__)
 
     @gen.coroutine
-    def close(self):
+    def close(self, timeout=None):
         self.state = CLOSING
         self.logger.debug("Flushing send queue")
-        self.emitter.flush()
+        yield self.emitter.join(timeout)
 
     def emit_nowait(self, msg):
         self.logger.debug("Drain emitting")
@@ -77,7 +77,7 @@ class RDKafkaDrain(object):
         self.state = RUNNING
 
     @gen.coroutine
-    def close(self, retry_timeout=INITIAL_TIMEOUT):
+    def close(self, timeout=INITIAL_TIMEOUT):
         try:
             self.state = CLOSING
             begin = datetime.utcnow()
@@ -89,8 +89,8 @@ class RDKafkaDrain(object):
                 self.emitter.poll(0)
                 num_messages = len(self.emitter)
                 elapsed = datetime.utcnow() - begin
-                retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
-                yield gen.sleep(retry_timeout.total_seconds())
+                timeout = min(timeout*2, MAX_TIMEOUT)
+                yield gen.sleep(timeout.total_seconds())
             else:
                 self.logger.error('Unable to flush messages; aborting')
         finally:
@@ -181,14 +181,18 @@ class RoutingDrain(object):
                                             self.__class__.__name__)
 
     @gen.coroutine
-    def close(self):
+    def close(self, timeout=None):
         self.state = CLOSING
         self.logger.debug("Flushing send queue")
         drain_futures = [
             drain.close()
             for drain in self.emitter.values()
         ]
-        yield gen.multi(drain_futures)
+        if timeout:
+            yield gen.with_timeout(timeout.total_seconds(),
+                                   gen.multi(drain_futures))
+        else:
+            yield gen.multi(drain_futures)
 
     def emit_nowait(self, msg):
         self.logger.debug("RoutingDrain emitting")
@@ -260,9 +264,9 @@ class SQSDrain(object):
             yield self._should_flush_queue.wait()
 
     @gen.coroutine
-    def close(self):
+    def close(self, timeout=None):
         self.state = CLOSING
-        yield self._send_queue.join()
+        yield self._send_queue.join(timeout)
 
     def emit_nowait(self, msg):
         if self._send_queue.qsize() >= self.emitter.max_messages:
@@ -309,9 +313,10 @@ class StreamDrain(object):
                                             self.__class__.__name__)
 
     @gen.coroutine
-    def close(self):
+    def close(self, timeout=None):
         self.state = CLOSING
         self.logger.debug("Flushing send queue")
+        # We cannot easily enforce the timeout for a stream
         self.emitter.flush()
 
     def emit_nowait(self, msg):
@@ -360,7 +365,7 @@ class ZMQDrain(object):
         self._writable.clear()
 
     @gen.coroutine
-    def close(self):
+    def close(self, timeout=None):
         self.state = CLOSING
         self.logger.debug("Flushing send queue")
         self.emitter.close()

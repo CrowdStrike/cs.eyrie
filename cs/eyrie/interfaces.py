@@ -56,7 +56,7 @@ class ITransistor(Interface):
     loop = Attribute('Instance of the Tornado IOLoop')
     state = Attribute('Current transition state')
 
-    def close():
+    def close(msg_prefix, timeout):
         """Close any open resources and exit gracefully.
         """
 
@@ -81,10 +81,6 @@ class IGate(Interface):
         a coroutine for a transducer, you'll want to increase this.
     """)
 
-    def close():
-        """Close any open resources and exit gracefully.
-        """
-
     def put_nowait():
         """Fast-path call to push a message downstream.
         """
@@ -105,7 +101,7 @@ class IDrain(Interface):
     state = Attribute('Current transition state')
     sender_tag = Attribute('Tag added to all metrics pushed to DataDog')
 
-    def close():
+    def close(timeout):
         """Close any open resources and exit gracefully.
         """
 
@@ -125,7 +121,7 @@ class ISource(Interface):
     sender_tag = Attribute('Tag added to all metrics pushed to DataDog')
     end_of_input = Attribute('tornado.locks.Event signifying source has reached end of input')
 
-    def close():
+    def close(timeout):
         """Close any open resources and exit gracefully.
         """
 
