@@ -146,33 +146,43 @@ class AsyncSQSClient(object):
                 entries.append(vars(entry))
             api_params['Entries'] = entries
 
-            response = yield self._operate(op_name, api_params, **req_kwargs)
-            for success in response.get('Successful', []):
-                # Populate our return data with objects passed in
-                result['Successful'].append([
-                    sre
-                    for sre in req_entries
-                    if sre.Id == success['Id']
-                ][0])
-            result['ResponseMetadata'].append(ResponseMetadata(
-                HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
-                HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
-                RequestId=response['ResponseMetadata']['RequestId'],
-            ))
-            for err in response.get('Failed', []):
-                entry = [
-                    entry
-                    for entry in req_entries
-                    if entry.Id == err['Id']
-                ][0]
+            try:
+                response = yield self._operate(op_name, api_params, **req_kwargs)
+            except SQSError as err:
                 try:
-                    # This will include retry logic,
-                    # up to self.retry_attempts
-                    response = yield singleton_method(entry)
+                    for entry in entries:
+                        response = yield singleton_method(entry)
                 except SQSError as err:
                     result['Failed'].append(entry)
                 else:
                     result['Successful'].append(entry)
+            else:
+                for success in response.get('Successful', []):
+                    # Populate our return data with objects passed in
+                    result['Successful'].append([
+                        sre
+                        for sre in req_entries
+                        if sre.Id == success['Id']
+                    ][0])
+                result['ResponseMetadata'].append(ResponseMetadata(
+                    HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
+                    HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
+                    RequestId=response['ResponseMetadata']['RequestId'],
+                ))
+                for err in response.get('Failed', []):
+                    entry = [
+                        entry
+                        for entry in req_entries
+                        if entry.Id == err['Id']
+                    ][0]
+                    try:
+                        # This will include retry logic,
+                        # up to self.retry_attempts
+                        response = yield singleton_method(entry)
+                    except SQSError as err:
+                        result['Failed'].append(entry)
+                    else:
+                        result['Successful'].append(entry)
             req_entries = req_entries[self.max_messages:]
 
         raise gen.Return(BatchResponse(**result))
