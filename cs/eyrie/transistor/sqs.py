@@ -93,6 +93,7 @@ class AsyncSQSClient(object):
     retry_attempts = 4
     # See: http://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/CommonErrors.html
     retry_exceptions = {
+        'InternalError',
         'InternalFailure',
         'ServiceUnavailable',
         'ThrottlingException',
@@ -309,6 +310,8 @@ class AsyncSQSClient(object):
     def delete_message_batch(self, *sqs_messages, **req_kwargs):
         """Asynchronously deletes messages from the queue
         """
+        req_kwargs.setdefault('retry', True)
+        req_kwargs.setdefault('attempt', 1)
         batch_response = yield self._execute_batch(
             'DeleteMessageBatch',
             DeleteMessageRequestEntry,
@@ -391,6 +394,8 @@ class AsyncSQSClient(object):
     def send_message_batch(self, *req_entries, **req_kwargs):
         """Asynchronously sends messages to the queue
         """
+        req_kwargs.setdefault('retry', True)
+        req_kwargs.setdefault('attempt', 1)
         batch_response = yield self._execute_batch('SendMessageBatch',
                                                    SendMessageRequestEntry,
                                                    self.send_message,
