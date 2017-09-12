@@ -149,13 +149,18 @@ class AsyncSQSClient(object):
             try:
                 response = yield self._operate(op_name, api_params, **req_kwargs)
             except SQSError as err:
-                try:
-                    for entry in entries:
+                for entry in entries:
+                    try:
                         response = yield singleton_method(entry)
-                except SQSError as err:
-                    result['Failed'].append(entry)
-                else:
-                    result['Successful'].append(entry)
+                    except SQSError as err:
+                        result['Failed'].append(entry)
+                    else:
+                        result['Successful'].append(entry)
+                    result['ResponseMetadata'].append(ResponseMetadata(
+                        HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
+                        HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
+                        RequestId=response['ResponseMetadata']['RequestId'],
+                    ))
             else:
                 for success in response.get('Successful', []):
                     # Populate our return data with objects passed in
@@ -183,6 +188,11 @@ class AsyncSQSClient(object):
                         result['Failed'].append(entry)
                     else:
                         result['Successful'].append(entry)
+                        result['ResponseMetadata'].append(ResponseMetadata(
+                            HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
+                            HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
+                            RequestId=response['ResponseMetadata']['RequestId'],
+                        ))
             req_entries = req_entries[self.max_messages:]
 
         raise gen.Return(BatchResponse(**result))
