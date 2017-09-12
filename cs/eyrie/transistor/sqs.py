@@ -235,7 +235,7 @@ class AsyncSQSClient(object):
                 raise SQSError(error.get('Message', ''),
                                error.get('Code', ''),
                                error.get('Type', ''),
-                               error.get('Detail'))
+                               error.get('Detail', ''))
 
         raise gen.Return(parsed_response)
 
