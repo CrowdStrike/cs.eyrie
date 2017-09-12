@@ -156,11 +156,11 @@ class AsyncSQSClient(object):
                         result['Failed'].append(entry)
                     else:
                         result['Successful'].append(entry)
-                    result['ResponseMetadata'].append(ResponseMetadata(
-                        HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
-                        HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
-                        RequestId=response['ResponseMetadata']['RequestId'],
-                    ))
+                        result['ResponseMetadata'].append(ResponseMetadata(
+                            HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
+                            HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
+                            RequestId=response['ResponseMetadata']['RequestId'],
+                        ))
             else:
                 for success in response.get('Successful', []):
                     # Populate our return data with objects passed in
