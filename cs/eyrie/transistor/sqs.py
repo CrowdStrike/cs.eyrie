@@ -212,7 +212,7 @@ class AsyncSQSClient(object):
         error = parsed_response.get('Error', {})
         if http_response.code != 200 or error:
             if retry and attempt <= self.retry_attempts and \
-               max([
+               any([
                    ename in http_response.body
                    for ename in self.retry_exceptions
                ]):
