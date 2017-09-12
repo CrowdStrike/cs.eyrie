@@ -202,7 +202,7 @@ class AsyncSQSClient(object):
         """Execute asynchronous transfer, possibly retrying
         """
         retry = req_kwargs.pop('retry', False)
-        attempt = req_kwargs.pop('attempt', 1)
+        attempt = req_kwargs.pop('attempt', 0) + 1
         op_model = self._client.meta.service_model.operation_model(op_name)
         http_request = self._prepare_request(op_model, api_params,
                                              **req_kwargs)
