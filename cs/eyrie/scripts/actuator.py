@@ -1,23 +1,43 @@
 import sys
-from os.path import isfile
+import urlparse as urlparse_module
+from urlparse import parse_qs, urlparse, urlunparse
 
 import zmq
-from confluent_kafka import Consumer, Producer
+from botocore.session import get_session
 from cs.eyrie import Vassal, ZMQChannel, script_main
 from cs.eyrie.interfaces import IKafka
 from cs.eyrie.transistor import (
     CLOSED, TRANSIENT_ERRORS,
-    PailfileSource, RDKafkaSource, StreamSource, ZMQSource,
+    AsyncSQSClient,
+    PailfileSource, RDKafkaSource, SQSSource, StreamSource, ZMQSource,
     Gate, Transistor,
-    RDKafkaDrain, StreamDrain, ZMQDrain,
+    RDKafkaDrain, SQSDrain, StreamDrain, ZMQDrain,
 )
 try:
     from hadoop.io import SequenceFile
 except ImportError:
     SequenceFile = None
 from pyramid.path import DottedNameResolver
+from pyramid.settings import asbool, aslist
 from tornado import gen
-from tornado.locks import Semaphore
+from tornado.httpclient import AsyncHTTPClient
+
+
+# http://api.zeromq.org/4-2:zmq-connect
+ZMQ_TRANSPORTS = {
+    'epgm',
+    'inproc',
+    'ipc',
+    'pgm,'
+    'tcp',
+    'vmci',
+}
+
+
+def _register_scheme(scheme):
+    for method in filter(lambda s: s.startswith('uses_'),
+                         dir(urlparse_module)):
+        getattr(urlparse_module, method).append(scheme)
 
 
 class Actuator(Vassal):
@@ -37,74 +57,13 @@ class Actuator(Vassal):
     title = "(rf:actuator)"
     app_name = 'actuator'
     args = [
-        # ZMQ options
-        (
-            ('--bind-input',),
-            dict(
-                help="Bind ZMQ input socket",
-                default=False,
-                action='store_true',
-            )
-        ),
-        (
-            ('--bind-output',),
-            dict(
-                help="Bind ZMQ output socket",
-                default=False,
-                action='store_true',
-            )
-        ),
-        (
-            ('--input-socket-type',),
-            dict(
-                help="Which ZMQ socket type to use for input",
-                required=False,
-                choices=['pull', 'sub'],
-                default='pull',
-            )
-        ),
-        (
-            ('--output-socket-type',),
-            dict(
-                help="Which ZMQ socket type to use for output",
-                required=False,
-                choices=['push', 'pub'],
-                default='push',
-            )
-        ),
-        # Kafka options
-        (
-            ('--bootstrap-servers',),
-            dict(
-                help="Initial list of Kafka brokers",
-                required=False,
-                default='127.0.0.1:9092',
-                nargs='+',
-            )
-        ),
-        (
-            ('--group-name',),
-            dict(
-                help="Kafka consumer group name",
-                required=False,
-            )
-        ),
-        (
-            ('--offset-reset',),
-            dict(
-                help="Action to take when there is no initial offset in offset store or the desired offset is out of range",
-                required=False,
-                choices=['smallest', 'largest'],
-                default='largest',
-            )
-        ),
-        # Base options
         (
             ('--input',),
             dict(
                 help="Source to be used as input",
                 required=True,
                 nargs='+',
+                type=urlparse,
             )
         ),
         (
@@ -112,6 +71,7 @@ class Actuator(Vassal):
             dict(
                 help="Destination of input data",
                 required=True,
+                type=urlparse,
             )
         ),
         (
@@ -121,14 +81,6 @@ class Actuator(Vassal):
                 required=False,
                 default=500,
                 type=int,
-            )
-        ),
-        (
-            ('--partition-strategy',),
-            dict(
-                help="Partition assignment strategy",
-                choices=['range', 'roundrobin'],
-                default='roundrobin',
             )
         ),
         (
@@ -157,37 +109,72 @@ class Actuator(Vassal):
         self.transistor = self.init_transistor(**kwargs)
 
     def init_kafka_drain(self, **kwargs):
+        from confluent_kafka import Producer
+        params = parse_qs(kwargs['output'].query)
+        bootstrap_servers = params['bootstrap_servers']
+        list_bootstrap_servers = aslist(bootstrap_servers[0].replace(',', ' '))
+        if len(list_bootstrap_servers) > 1:
+            bootstrap_servers = list_bootstrap_servers
+        else:
+            bootstrap_servers = params['bootstrap_servers']
+
         return RDKafkaDrain(
             self.logger,
             self.loop,
             Producer({
                 'api.version.request': True,
-                'bootstrap.servers': ','.join(kwargs['bootstrap_servers']),
+                'bootstrap.servers': ','.join(bootstrap_servers),
                 'default.topic.config': {'produce.offset.report': True},
                 # The lambda is necessary to return control to the main Tornado
                 # thread
                 'error_cb': lambda err: self.loop.add_callback(self.onKafkaError,
                                                                err),
-                'group.id': kwargs['group_name'],
+                'group.id': params['group_name'][0],
                 # See: https://github.com/edenhill/librdkafka/issues/437
                 'log.connection.close': False,
                 'queue.buffering.max.ms': 1000,
                 'queue.buffering.max.messages': kwargs['inflight'],
             }),
-            kwargs['output'],
+            kwargs['output'].netloc,
         )
 
     def init_kafka_source(self, **kwargs):
+        from confluent_kafka import Consumer
+        params = {}
+        for parsed_url in kwargs['input']:
+            url_params = parse_qs(parsed_url.query)
+            for key, val in url_params.items():
+                params.setdefault(key, []).extend(val)
+
+        bootstrap_servers = params['bootstrap_servers']
+        list_bootstrap_servers = aslist(bootstrap_servers[0].replace(',', ' '))
+        if len(list_bootstrap_servers) > 1:
+            bootstrap_servers = list_bootstrap_servers
+        else:
+            bootstrap_servers = params['bootstrap_servers']
+
+        offset_reset = params.get('offset_reset')
+        if offset_reset:
+            offset_reset = offset_reset[0]
+        else:
+            offset_reset = 'largest'
+
+        strategy = params.get('partition_strategy')
+        if strategy:
+            strategy = strategy[0]
+        else:
+            strategy = 'roundrobin'
+
         return RDKafkaSource(
             self.logger,
             self.loop,
             kwargs['gate'],
             Consumer({
                 'api.version.request': True,
-                'bootstrap.servers': ','.join(kwargs['bootstrap_servers']),
+                'bootstrap.servers': ','.join(bootstrap_servers),
                 #'debug': 'all',
                 'default.topic.config': {
-                    'auto.offset.reset': kwargs['offset_reset'],
+                    'auto.offset.reset': offset_reset,
                     'enable.auto.commit': True,
                     'offset.store.method': 'broker',
                     'produce.offset.report': True,
@@ -197,14 +184,14 @@ class Actuator(Vassal):
                 # thread
                 'error_cb': lambda err: self.loop.add_callback(self.onKafkaError,
                                                                err),
-                'group.id': kwargs['group_name'],
+                'group.id': params['group_name'][0],
                 # See: https://github.com/edenhill/librdkafka/issues/437
                 'log.connection.close': False,
                 'max.in.flight': kwargs['inflight'],
-                'partition.assignment.strategy': kwargs['partition_strategy'],
+                'partition.assignment.strategy': strategy,
                 'queue.buffering.max.ms': 1000,
             }),
-            *kwargs['input']
+            *[url.netloc for url in kwargs['input']]
         )
 
     def init_pailfile_source(self, **kwargs):
@@ -212,7 +199,53 @@ class Actuator(Vassal):
             self.logger,
             self.loop,
             kwargs['gate'],
-            SequenceFile.Reader(kwargs['input'][0]),
+            SequenceFile.Reader(kwargs['input'][0].path),
+        )
+
+    def _init_sqs_client(self, parsed_url, **kwargs):
+        params = parse_qs(parsed_url.query)
+        session = get_session()
+        queue_url = params.get('queue_url')
+        if queue_url:
+            queue_url = queue_url[0]
+        else:
+            queue_url = None
+
+        region = params.get('region')
+        if region:
+            region = region[0]
+        else:
+            region = None
+
+        return AsyncSQSClient(
+            session,
+            queue_name=parsed_url.netloc,
+            queue_url=queue_url,
+            region=region,
+            http_client=AsyncHTTPClient(
+                self.loop,
+                force_instance=True,
+                defaults=dict(
+                    request_timeout=AsyncSQSClient.long_poll_timeout+5,
+                )
+            )
+        )
+
+    def init_sqs_drain(self, **kwargs):
+        sqs_client = self._init_sqs_client(kwargs['output'], **kwargs)
+        return SQSDrain(
+            self.logger,
+            self.loop,
+            sqs_client,
+        )
+
+    def init_sqs_source(self, **kwargs):
+        sqs_client = self._init_sqs_client(kwargs['input'][0], **kwargs)
+        return SQSSource(
+            self.logger,
+            self.loop,
+            kwargs['gate'],
+            sqs_client,
         )
 
     def init_stream_drain(self, **kwargs):
@@ -231,14 +264,22 @@ class Actuator(Vassal):
         )
 
     def init_transistor(self, **kwargs):
-        if kwargs['output'] == '-':
+        if kwargs['output'].scheme == 'file' and \
+           kwargs['output'].netloc == '-':
             del self.channels['output']
             drain = self.init_stream_drain(**kwargs)
-        elif '://' in kwargs['output']:
+        elif kwargs['output'].scheme.lower() in ZMQ_TRANSPORTS:
             drain = self.init_zmq_drain(**kwargs)
-        else:
+        elif kwargs['output'].scheme == 'kafka':
             del self.channels['output']
             drain = self.init_kafka_drain(**kwargs)
+        elif kwargs['output'].scheme == 'sqs':
+            del self.channels['output']
+            drain = self.init_sqs_drain(**kwargs)
+        else:
+            raise ValueError(
+                'Unsupported drain scheme: {}'.format(kwargs['output'].scheme)
+            )
 
         # The gate "has" a drain;
         # a source "has" a gate
@@ -252,17 +293,25 @@ class Actuator(Vassal):
             drain,
             transducer,
         )
-        if kwargs['input'][0] == '-':
+
+        if not kwargs['input'][0].scheme and kwargs['input'][0].path == '-':
             del self.channels['input']
             source = self.init_stream_source(**kwargs)
-        elif isfile(kwargs['input'][0]):
+        elif kwargs['input'][0].scheme == 'file':
             del self.channels['input']
             source = self.init_pailfile_source(**kwargs)
-        elif '://' in kwargs['input'][0]:
+        elif kwargs['input'][0].scheme.lower() in ZMQ_TRANSPORTS:
             source = self.init_zmq_source(**kwargs)
-        else:
+        elif kwargs['input'][0].scheme == 'kafka':
             del self.channels['input']
             source = self.init_kafka_source(**kwargs)
+        elif kwargs['input'][0].scheme == 'sqs':
+            del self.channels['input']
+            source = self.init_sqs_source(**kwargs)
+        else:
+            raise ValueError(
+                'Unsupported source scheme: {}'.format(kwargs['input'].scheme)
+            )
 
         return Transistor(
             self.logger,
@@ -272,19 +321,44 @@ class Actuator(Vassal):
             drain,
         )
 
-    def init_zmq_drain(self, **kwargs):
+    def _init_zmq_socket(self, parsed_url, channel, **kwargs):
+        # Reconstruct ZMQ endpoint, sans query parameters
+        endpoint = urlunparse((parsed_url.scheme,
+                               parsed_url.netloc,
+                               parsed_url.path,
+                               None, None, None))
+        params = parse_qs(parsed_url.query)
+        bind = params.get('bind')
+        if bind:
+            bind = asbool(bind[0])
+        else:
+            bind = False
+        socket_type = params.get('socket_type')
+        if socket_type:
+            socket_type = socket_type[0]
+        else:
+            socket_type = kwargs['default_socket_type']
         channel = ZMQChannel(**dict(
-            vars(self.channels['output']),
-            bind=kwargs['bind_output'],
-            endpoint=kwargs['output'],
-            socket_type=getattr(zmq, kwargs['output_socket_type'].upper()),
+            vars(channel),
+            bind=bind,
+            endpoint=endpoint,
+            socket_type=getattr(zmq, socket_type.upper()),
         ))
         socket = self.context.socket(channel.socket_type)
+        if channel.socket_type == zmq.SUB:
+            socket.setsockopt(zmq.SUBSCRIBE, '')
         socket.set_hwm(kwargs['inflight'])
-        if kwargs['bind_output']:
-            socket.bind(kwargs['output'])
+        if bind:
+            socket.bind(endpoint)
         else:
-            socket.connect(kwargs['output'])
+            socket.connect(endpoint)
+        return socket
+
+    def init_zmq_drain(self, **kwargs):
+        kwargs['default_socket_type'] = 'push'
+        socket = self._init_zmq_socket(kwargs['output'],
+                                       self.channels['output'],
+                                       **kwargs)
         return ZMQDrain(
             self.logger,
             self.loop,
@@ -292,20 +366,10 @@ class Actuator(Vassal):
         )
 
     def init_zmq_source(self, **kwargs):
-        channel = ZMQChannel(**dict(
-            vars(self.channels['input']),
-            bind=kwargs['bind_input'],
-            endpoint=kwargs['input'][0],
-            socket_type=getattr(zmq, kwargs['input_socket_type'].upper()),
-        ))
-        socket = self.context.socket(channel.socket_type)
-        if channel.socket_type == zmq.SUB:
-            socket.setsockopt(zmq.SUBSCRIBE, '')
-        socket.set_hwm(kwargs['inflight'])
-        if kwargs['bind_input']:
-            socket.bind(kwargs['input'][0])
-        else:
-            socket.connect(kwargs['input'][0])
+        kwargs['default_socket_type'] = 'pull'
+        socket = self._init_zmq_socket(kwargs['input'][0],
+                                       self.channels['input'],
+                                       **kwargs)
         return ZMQSource(
             self.logger,
             self.loop,
@@ -337,6 +401,13 @@ class Actuator(Vassal):
 
 
 def main():
+    # Execute this before script_main, to avoid polluting on simple module
+    # import but also to be present before argparse does its thing
+    _register_scheme('kafka')
+    _register_scheme('sqs')
+    for scheme in ZMQ_TRANSPORTS:
+        _register_scheme(scheme)
+
     actuator = script_main(Actuator, None, start_loop=False)
     actuator.join()
     actuator.loop.start()
