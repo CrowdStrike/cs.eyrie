@@ -153,6 +153,8 @@ class AsyncSQSClient(object):
                     try:
                         response = yield singleton_method(entry)
                     except SQSError as err:
+                        log_msg = 'Too many SQS errors, retry failed: %s'
+                        self.logger.error(log_msg, err)
                         result['Failed'].append(entry)
                     else:
                         result['Successful'].append(entry)
@@ -185,6 +187,8 @@ class AsyncSQSClient(object):
                         # up to self.retry_attempts
                         response = yield singleton_method(entry)
                     except SQSError as err:
+                        log_msg = 'Too many SQS errors, retry failed: %s'
+                        self.logger.error(log_msg, err)
                         result['Failed'].append(entry)
                     else:
                         result['Successful'].append(entry)
