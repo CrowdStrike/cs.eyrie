@@ -129,7 +129,7 @@ class Actuator(Vassal):
                 # thread
                 'error_cb': lambda err: self.loop.add_callback(self.onKafkaError,
                                                                err),
-                'group.id': params['group_name'][0],
+                'group.id': params['group_name'][-1],
                 # See: https://github.com/edenhill/librdkafka/issues/437
                 'log.connection.close': False,
                 'queue.buffering.max.ms': 1000,
@@ -155,13 +155,13 @@ class Actuator(Vassal):
 
         offset_reset = params.get('offset_reset')
         if offset_reset:
-            offset_reset = offset_reset[0]
+            offset_reset = offset_reset[-1]
         else:
             offset_reset = 'largest'
 
         strategy = params.get('partition_strategy')
         if strategy:
-            strategy = strategy[0]
+            strategy = strategy[-1]
         else:
             strategy = 'roundrobin'
 
@@ -207,13 +207,13 @@ class Actuator(Vassal):
         session = get_session()
         queue_url = params.get('queue_url')
         if queue_url:
-            queue_url = queue_url[0]
+            queue_url = queue_url[-1]
         else:
             queue_url = None
 
         region = params.get('region')
         if region:
-            region = region[0]
+            region = region[-1]
         else:
             region = None
 
