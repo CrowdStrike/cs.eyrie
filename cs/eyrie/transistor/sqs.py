@@ -351,12 +351,13 @@ class AsyncSQSClient(object):
         """Asynchronously receive messages from the queue
         """
         req_kwargs.setdefault('retry', True)
+        max_messages = req_kwargs.pop('max_messages', self.max_messages)
         response = yield self._operate(
             'ReceiveMessage',
             dict(
                 AttributeNames=['All'],
                 MessageAttributeNames=['All'],
-                MaxNumberOfMessages=self.max_messages,
+                MaxNumberOfMessages=max_messages,
                 QueueUrl=self.queue_url,
                 WaitTimeSeconds=self.long_poll_timeout,
             ),
