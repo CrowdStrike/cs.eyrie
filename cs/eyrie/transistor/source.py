@@ -4,12 +4,11 @@ from cs.eyrie.config import INITIAL_TIMEOUT, MAX_TIMEOUT
 from cs.eyrie.interfaces import IKafka, ISource
 from cs.eyrie.transistor import (
     CLOSING, RUNNING, TRANSIENT_ERRORS,
-    SQSError,
 )
 from datadog import statsd
 from tornado import gen
 from tornado.locks import Event
-from tornado.queues import Queue, QueueEmpty, QueueFull
+from tornado.queues import QueueEmpty, QueueFull
 from zope.interface import implementer
 
 
@@ -223,80 +222,61 @@ class SQSSource(object):
         self.end_of_input = Event()
         self.input_error = Event()
         self.state = RUNNING
-        self._delete_queue = Queue()
-        self._should_flush_queue = Event()
         self.sender_tag = 'sender:%s.%s' % (self.__class__.__module__,
                                             self.__class__.__name__)
         self.loop.spawn_callback(self.onInput)
-        self.loop.spawn_callback(self._onDelete)
 
     @gen.coroutine
     def close(self, timeout=None):
         self.state = CLOSING
         self.logger.warning('Closing source')
-        yield self._delete_queue.join(timeout)
-
-    @gen.coroutine
-    def _flush_delete_batch(self, batch_size):
-        delete_batch = [
-            self._delete_queue.get_nowait()
-            for pos in range(min(batch_size, self.collector.max_messages))
-        ]
-        try:
-            response = yield self.collector.delete_message_batch(*delete_batch)
-        except SQSError as err:
-            lmsg = 'Error encountered deleting processed messages in SQS: %s'
-            self.logger.exception(lmsg, err)
-            self.input_error.set()
-
-            for msg in delete_batch:
-                self._delete_queue.put_nowait(msg)
-        else:
-            if response.Failed:
-                self.input_error.set()
-                for req in response.Failed:
-                    self.logger.error('Message failed to delete: %s', req.Id)
-                    self._delete_queue.put_nowait(req)
-
-    @gen.coroutine
-    def _onDelete(self):
-        respawn = True
-        while respawn:
-            qsize = self._delete_queue.qsize()
-            # This will keep flushing until clear,
-            # including items that show up in between flushes
-            while qsize > 0:
-                yield self._flush_delete_batch(qsize)
-                qsize = self._delete_queue.qsize()
-            self._should_flush_queue.clear()
-            yield self._should_flush_queue.wait()
 
     @gen.coroutine
     def onInput(self):
         respawn = True
         retry_timeout = INITIAL_TIMEOUT
+        # We use an algorithm similar to TCP window scaling,
+        # so that we request fewer messages when we encounter
+        # back pressure from our gate/drain and request more
+        # when we flushed a complete batch
+        window_size = self.collector.max_messages
         while respawn:
             try:
-                response = yield self.collector.receive_message_batch()
+                response = yield self.collector.receive_message_batch(
+                    max_messages=window_size,
+                )
                 if response.Messages:
                     # We need to have low latency to delete messages
                     # we've processed
-                    self._should_flush_queue.set()
                     retry_timeout = INITIAL_TIMEOUT
                 else:
                     retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
                     yield gen.sleep(retry_timeout)
 
+                sent_full_batch = True
                 for position, msg in enumerate(response.Messages):
                     try:
                         self.gate.put_nowait(msg)
                     except QueueFull:
                         self.logger.debug('Gate queue full; yielding')
+                        sent_full_batch = False
+                        # TODO: is it worth trying to batch and schedule
+                        #       a flush at this point instead of many
+                        #       single deletes?
                         yield self.gate.put(msg)
-                    self._delete_queue.put_nowait(msg)
-
                     statsd.increment('%s.queued' % self.metric_prefix,
                                      tags=[self.sender_tag])
+                    # Schedule for deletion on the next IOLoop cycle
+                    self.loop.add_callback(self.collector.delete_message, msg)
+
+                # If we were able to flush the entire batch without waiting,
+                # increase our window size to max_messages
+                if sent_full_batch and \
+                   window_size < self.collector.max_messages:
+                    window_size += 1
+                # Otherwise ask for less next time
+                elif not sent_full_batch and window_size > 1:
+                    window_size -= 1
             except Exception as err:
                 self.logger.exception(err)
                 self.input_error.set()
