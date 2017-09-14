@@ -274,6 +274,7 @@ class SQSSource(object):
     @gen.coroutine
     def onInput(self):
         respawn = True
+        retry_timeout = INITIAL_TIMEOUT
         while respawn:
             try:
                 response = yield self.collector.receive_message_batch()
@@ -281,6 +282,11 @@ class SQSSource(object):
                     # We need to have low latency to delete messages
                     # we've processed
                     self._should_flush_queue.set()
+                    retry_timeout = INITIAL_TIMEOUT
+                else:
+                    retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
+                    yield gen.sleep(retry_timeout)
+
                 for position, msg in enumerate(response.Messages):
                     try:
                         self.gate.put_nowait(msg)
