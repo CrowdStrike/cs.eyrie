@@ -168,11 +168,30 @@ class AsyncSQSClient(object):
             else:
                 for success in response.get('Successful', []):
                     # Populate our return data with objects passed in
-                    result['Successful'].append([
+                    # We want this to blow up, so that inconsistencies
+                    # in the response are bubbled up
+                    matching_items = [
                         sre
                         for sre in req_entries
                         if sre.Id == success['Id']
-                    ][0])
+                    ]
+                    if len(matching_items) > 1:
+                        message = 'Duplicate message IDs in batch: %s'
+                        raise SQSError(
+                            message=message % success['Id'],
+                            code='9998',
+                            error_type='ClientError',
+                            detail='',
+                        )
+                    elif not matching_items:
+                        message = 'No matching message ID for: %s'
+                        raise SQSError(
+                            message=message % success['Id'],
+                            code='9999',
+                            error_type='ClientError',
+                            detail='',
+                        )
+                    result['Successful'].append(matching_items[0])
                 result['ResponseMetadata'].append(response['ResponseMetadata'])
                 for err in response.get('Failed', []):
                     entry = [
