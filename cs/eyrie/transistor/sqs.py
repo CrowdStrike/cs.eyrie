@@ -158,11 +158,9 @@ class AsyncSQSClient(object):
                         result['Failed'].append(entry)
                     else:
                         result['Successful'].append(entry)
-                        result['ResponseMetadata'].append(ResponseMetadata(
-                            HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
-                            HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
-                            RequestId=response['ResponseMetadata']['RequestId'],
-                        ))
+                        result['ResponseMetadata'].append(
+                            response['ResponseMetadata']
+                        )
             else:
                 for success in response.get('Successful', []):
                     # Populate our return data with objects passed in
@@ -171,11 +169,7 @@ class AsyncSQSClient(object):
                         for sre in req_entries
                         if sre.Id == success['Id']
                     ][0])
-                result['ResponseMetadata'].append(ResponseMetadata(
-                    HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
-                    HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
-                    RequestId=response['ResponseMetadata']['RequestId'],
-                ))
+                result['ResponseMetadata'].append(response['ResponseMetadata'])
                 for err in response.get('Failed', []):
                     entry = [
                         entry
@@ -192,11 +186,9 @@ class AsyncSQSClient(object):
                         result['Failed'].append(entry)
                     else:
                         result['Successful'].append(entry)
-                        result['ResponseMetadata'].append(ResponseMetadata(
-                            HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
-                            HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
-                            RequestId=response['ResponseMetadata']['RequestId'],
-                        ))
+                        result['ResponseMetadata'].append(
+                            response['ResponseMetadata']
+                        )
             req_entries = req_entries[self.max_messages:]
 
         raise gen.Return(BatchResponse(**result))
@@ -213,6 +205,13 @@ class AsyncSQSClient(object):
         http_response = yield self.http_client.fetch(http_request,
                                                      raise_error=False)
         parsed_response = self._parse_response(op_model, http_response)
+        if 'ResponseMetadata' in parsed_response:
+            metadata = parsed_response.pop('ResponseMetadata')
+            parsed_response['ResponseMetadata'] = ResponseMetadata(
+                HTTPHeaders=metadata.get('HTTPHeaders'),
+                HTTPStatusCode=int(metadata.get('HTTPStatusCode', 0)),
+                RequestId=metadata.get('RequestId'),
+            )
         error = parsed_response.get('Error', {})
         if http_response.code != 200 or error:
             if retry and attempt <= self.retry_attempts and \
@@ -387,11 +386,7 @@ class AsyncSQSClient(object):
 
         raise gen.Return(ReceiveMessageResponse(
             Messages=messages,
-            ResponseMetadata=ResponseMetadata(
-                HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
-                HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
-                RequestId=response['ResponseMetadata']['RequestId'],
-            )
+            ResponseMetadata=response['ResponseMetadata'],
         ))
 
     @gen.coroutine
