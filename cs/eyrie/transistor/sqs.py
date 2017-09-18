@@ -317,8 +317,7 @@ class AsyncSQSClient(object):
         """Asynchronously deletes a message from the queue
         """
         req_kwargs.setdefault('retry', True)
-        req_kwargs.setdefault('attempt', 1)
-        assert isinstance(sqs_message, SQSMessage)
+        assert isinstance(sqs_message, (SQSMessage, DeleteMessageRequestEntry))
         # botocore expects dictionaries
         api_params = dict(
             QueueUrl=self.queue_url,
@@ -338,14 +337,22 @@ class AsyncSQSClient(object):
         """Asynchronously deletes messages from the queue
         """
         req_kwargs.setdefault('retry', True)
-        req_kwargs.setdefault('attempt', 1)
+        batch = []
+        for item in sqs_messages:
+            if isinstance(item, DeleteMessageRequestEntry):
+                batch.append(item)
+            else:
+                assert isinstance(item, SQSMessage)
+                batch.append(DeleteMessageRequestEntry(
+                    Id=uuid4().hex,
+                    ReceiptHandle=item.ReceiptHandle,
+                ))
+
         batch_response = yield self._execute_batch(
             'DeleteMessageBatch',
             DeleteMessageRequestEntry,
             self.delete_message,
-            *[DeleteMessageRequestEntry(Id=uuid4().hex,
-                                        ReceiptHandle=msg.ReceiptHandle)
-              for msg in sqs_messages],
+            *batch,
             **req_kwargs)
         raise gen.Return(batch_response)
 
