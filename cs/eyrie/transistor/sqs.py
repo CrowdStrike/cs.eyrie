@@ -321,8 +321,8 @@ class AsyncSQSClient(object):
         assert isinstance(sqs_message, SQSMessage)
         # botocore expects dictionaries
         api_params = dict(
-            vars(sqs_message),
             QueueUrl=self.queue_url,
+            ReceiptHandle=sqs_message.ReceiptHandle,
         )
         api_params.pop('Id', None)
 
