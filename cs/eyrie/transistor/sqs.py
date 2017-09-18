@@ -90,6 +90,7 @@ class AsyncSQSClient(object):
     long_poll_timeout = 20
     min_sleep = 5
     max_messages = 10
+    max_timeout = MAX_TIMEOUT
     retry_attempts = 4
     # See: http://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/CommonErrors.html
     retry_exceptions = {
@@ -222,9 +223,9 @@ class AsyncSQSClient(object):
                 req_kwargs['retry'] = retry
                 req_kwargs['attempt'] = attempt
                 # https://www.awsarchitectureblog.com/2015/03/backoff.html
-                delay = min(MAX_TIMEOUT.total_seconds(),
+                delay = min(self.max_timeout.total_seconds(),
                             self.min_sleep * 2 ** attempt)
-                delay = min(MAX_TIMEOUT.total_seconds(),
+                delay = min(self.max_timeout.total_seconds(),
                             uniform(self.min_sleep, delay * 3))
                 yield gen.sleep(delay)
                 response = yield self._operate(op_name, api_params,
