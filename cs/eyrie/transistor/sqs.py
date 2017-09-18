@@ -102,10 +102,12 @@ class AsyncSQSClient(object):
 
     def __init__(self,
                  session,
+                 logger,
                  queue_name=None,
                  queue_url=None,
                  region=None,
                  http_client=None):
+        self.logger = logger
         self.queue_name = queue_name
         if region is None:
             region = "us-west-1"

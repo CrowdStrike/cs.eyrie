@@ -219,6 +219,7 @@ class Actuator(Vassal):
 
         return AsyncSQSClient(
             session,
+            self.logger,
             queue_name=parsed_url.netloc,
             queue_url=queue_url,
             region=region,
