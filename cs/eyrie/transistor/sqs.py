@@ -399,7 +399,6 @@ class AsyncSQSClient(object):
         """Asynchronously sends a message to the queue
         """
         req_kwargs.setdefault('retry', True)
-        req_kwargs.setdefault('attempt', 1)
         assert isinstance(req_entry, SendMessageRequestEntry)
         # botocore expects dictionaries
         api_params = dict(
@@ -420,7 +419,6 @@ class AsyncSQSClient(object):
         """Asynchronously sends messages to the queue
         """
         req_kwargs.setdefault('retry', True)
-        req_kwargs.setdefault('attempt', 1)
         batch_response = yield self._execute_batch('SendMessageBatch',
                                                    SendMessageRequestEntry,
                                                    self.send_message,
