@@ -153,7 +153,7 @@ class AsyncSQSClient(object):
                                                api_params,
                                                **req_kwargs)
             except SQSError as err:
-                for entry in req_entries:
+                for entry in req_entries[:self.max_messages]:
                     try:
                         response = yield singleton_method(entry)
                     except SQSError as err:
