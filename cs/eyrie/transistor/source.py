@@ -291,7 +291,6 @@ class SQSSource(object):
                     max_messages=window_size,
                 )
                 if response.Messages:
-                    self._should_flush_queue.set()
                     # We need to have low latency to delete messages
                     # we've processed
                     retry_timeout = INITIAL_TIMEOUT
@@ -310,6 +309,7 @@ class SQSSource(object):
                         #       a flush at this point instead of many
                         #       single deletes?
                         yield self.gate.put(msg)
+                    self._should_flush_queue.set()
                     self._delete_queue.put_nowait(msg)
                     statsd.increment('%s.queued' % self.metric_prefix,
                                      tags=[self.sender_tag])
