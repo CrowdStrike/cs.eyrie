@@ -1,0 +1,16 @@
+<ErrorResponse>
+   <Error>
+      <Type>
+         Sender
+      </Type>
+      <Code>
+         InternalError
+      </Code>
+      <Message>
+          The service encountered an error, please try again.
+      </Message>
+   </Error>
+   <RequestId>
+      42d59b56-7407-4c4a-be0f-4c88daeea257
+   </RequestId>
+</ErrorResponse>
