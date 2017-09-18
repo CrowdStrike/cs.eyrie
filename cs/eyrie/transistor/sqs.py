@@ -148,9 +148,10 @@ class AsyncSQSClient(object):
                 # botocore expects dictionaries
                 entries.append(vars(entry))
             api_params['Entries'] = entries
-
             try:
-                response = yield self._operate(op_name, api_params, **req_kwargs)
+                response = yield self._operate(op_name,
+                                               api_params,
+                                               **req_kwargs)
             except SQSError as err:
                 for entry in entries:
                     try:
@@ -369,7 +370,8 @@ class AsyncSQSClient(object):
         messages = []
         incoming = response.get('Messages', []) or []
         for msg in incoming:
-            msg_attr = self._parse_msg_attributes(msg['MessageAttributes'])
+            msg_attr = self._parse_msg_attributes(msg.get('MessageAttributes',
+                                                          {}))
             flags = msg_attr.get('flags', 0)
             body = msg['Body']
             if flags & BASE64_ENCODE:
@@ -379,7 +381,8 @@ class AsyncSQSClient(object):
 
             messages.append(
                 SQSMessage(
-                    Attributes=self._parse_attributes(msg['Attributes']),
+                    Attributes=self._parse_attributes(msg.get('Attributes',
+                                                              {})),
                     MessageAttributes=msg_attr,
                     MessageId=msg['MessageId'],
                     ReceiptHandle=msg['ReceiptHandle'],
