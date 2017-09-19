@@ -90,6 +90,7 @@ class AsyncSQSClient(object):
     long_poll_timeout = 20
     min_sleep = 5
     max_messages = 10
+    max_timeout = MAX_TIMEOUT
     retry_attempts = 4
     # See: http://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/CommonErrors.html
     retry_exceptions = {
@@ -101,10 +102,12 @@ class AsyncSQSClient(object):
 
     def __init__(self,
                  session,
+                 logger,
                  queue_name=None,
                  queue_url=None,
                  region=None,
                  http_client=None):
+        self.logger = logger
         self.queue_name = queue_name
         if region is None:
             region = "us-west-1"
@@ -145,11 +148,12 @@ class AsyncSQSClient(object):
                 # botocore expects dictionaries
                 entries.append(vars(entry))
             api_params['Entries'] = entries
-
             try:
-                response = yield self._operate(op_name, api_params, **req_kwargs)
+                response = yield self._operate(op_name,
+                                               api_params,
+                                               **req_kwargs)
             except SQSError as err:
-                for entry in entries:
+                for entry in req_entries[:self.max_messages]:
                     try:
                         response = yield singleton_method(entry)
                     except SQSError as err:
@@ -158,24 +162,37 @@ class AsyncSQSClient(object):
                         result['Failed'].append(entry)
                     else:
                         result['Successful'].append(entry)
-                        result['ResponseMetadata'].append(ResponseMetadata(
-                            HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
-                            HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
-                            RequestId=response['ResponseMetadata']['RequestId'],
-                        ))
+                        result['ResponseMetadata'].append(
+                            response['ResponseMetadata']
+                        )
             else:
                 for success in response.get('Successful', []):
                     # Populate our return data with objects passed in
-                    result['Successful'].append([
+                    # We want this to blow up, so that inconsistencies
+                    # in the response are bubbled up
+                    matching_items = [
                         sre
                         for sre in req_entries
                         if sre.Id == success['Id']
-                    ][0])
-                result['ResponseMetadata'].append(ResponseMetadata(
-                    HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
-                    HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
-                    RequestId=response['ResponseMetadata']['RequestId'],
-                ))
+                    ]
+                    if len(matching_items) > 1:
+                        message = 'Duplicate message IDs in batch: %s'
+                        raise SQSError(
+                            message=message % success['Id'],
+                            code='9998',
+                            error_type='ClientError',
+                            detail='',
+                        )
+                    elif not matching_items:
+                        message = 'No matching message ID for: %s'
+                        raise SQSError(
+                            message=message % success['Id'],
+                            code='9999',
+                            error_type='ClientError',
+                            detail='',
+                        )
+                    result['Successful'].append(matching_items[0])
+                result['ResponseMetadata'].append(response['ResponseMetadata'])
                 for err in response.get('Failed', []):
                     entry = [
                         entry
@@ -192,11 +209,9 @@ class AsyncSQSClient(object):
                         result['Failed'].append(entry)
                     else:
                         result['Successful'].append(entry)
-                        result['ResponseMetadata'].append(ResponseMetadata(
-                            HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
-                            HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
-                            RequestId=response['ResponseMetadata']['RequestId'],
-                        ))
+                        result['ResponseMetadata'].append(
+                            response['ResponseMetadata']
+                        )
             req_entries = req_entries[self.max_messages:]
 
         raise gen.Return(BatchResponse(**result))
@@ -213,6 +228,13 @@ class AsyncSQSClient(object):
         http_response = yield self.http_client.fetch(http_request,
                                                      raise_error=False)
         parsed_response = self._parse_response(op_model, http_response)
+        if 'ResponseMetadata' in parsed_response:
+            metadata = parsed_response.pop('ResponseMetadata')
+            parsed_response['ResponseMetadata'] = ResponseMetadata(
+                HTTPHeaders=metadata.get('HTTPHeaders'),
+                HTTPStatusCode=int(metadata.get('HTTPStatusCode', 0)),
+                RequestId=metadata.get('RequestId'),
+            )
         error = parsed_response.get('Error', {})
         if http_response.code != 200 or error:
             if retry and attempt <= self.retry_attempts and \
@@ -223,9 +245,9 @@ class AsyncSQSClient(object):
                 req_kwargs['retry'] = retry
                 req_kwargs['attempt'] = attempt
                 # https://www.awsarchitectureblog.com/2015/03/backoff.html
-                delay = min(MAX_TIMEOUT.total_seconds(),
+                delay = min(self.max_timeout.total_seconds(),
                             self.min_sleep * 2 ** attempt)
-                delay = min(MAX_TIMEOUT.total_seconds(),
+                delay = min(self.max_timeout.total_seconds(),
                             uniform(self.min_sleep, delay * 3))
                 yield gen.sleep(delay)
                 response = yield self._operate(op_name, api_params,
@@ -314,12 +336,11 @@ class AsyncSQSClient(object):
         """Asynchronously deletes a message from the queue
         """
         req_kwargs.setdefault('retry', True)
-        req_kwargs.setdefault('attempt', 1)
-        assert isinstance(sqs_message, SQSMessage)
+        assert isinstance(sqs_message, (SQSMessage, DeleteMessageRequestEntry))
         # botocore expects dictionaries
         api_params = dict(
-            vars(sqs_message),
             QueueUrl=self.queue_url,
+            ReceiptHandle=sqs_message.ReceiptHandle,
         )
         api_params.pop('Id', None)
 
@@ -335,14 +356,22 @@ class AsyncSQSClient(object):
         """Asynchronously deletes messages from the queue
         """
         req_kwargs.setdefault('retry', True)
-        req_kwargs.setdefault('attempt', 1)
+        batch = []
+        for item in sqs_messages:
+            if isinstance(item, DeleteMessageRequestEntry):
+                batch.append(item)
+            else:
+                assert isinstance(item, SQSMessage)
+                batch.append(DeleteMessageRequestEntry(
+                    Id=uuid4().hex,
+                    ReceiptHandle=item.ReceiptHandle,
+                ))
+
         batch_response = yield self._execute_batch(
             'DeleteMessageBatch',
             DeleteMessageRequestEntry,
             self.delete_message,
-            *[DeleteMessageRequestEntry(Id=uuid4().hex,
-                                        ReceiptHandle=msg.ReceiptHandle)
-              for msg in sqs_messages],
+            *batch,
             **req_kwargs)
         raise gen.Return(batch_response)
 
@@ -367,7 +396,8 @@ class AsyncSQSClient(object):
         messages = []
         incoming = response.get('Messages', []) or []
         for msg in incoming:
-            msg_attr = self._parse_msg_attributes(msg['MessageAttributes'])
+            msg_attr = self._parse_msg_attributes(msg.get('MessageAttributes',
+                                                          {}))
             flags = msg_attr.get('flags', 0)
             body = msg['Body']
             if flags & BASE64_ENCODE:
@@ -377,7 +407,8 @@ class AsyncSQSClient(object):
 
             messages.append(
                 SQSMessage(
-                    Attributes=self._parse_attributes(msg['Attributes']),
+                    Attributes=self._parse_attributes(msg.get('Attributes',
+                                                              {})),
                     MessageAttributes=msg_attr,
                     MessageId=msg['MessageId'],
                     ReceiptHandle=msg['ReceiptHandle'],
@@ -387,11 +418,7 @@ class AsyncSQSClient(object):
 
         raise gen.Return(ReceiveMessageResponse(
             Messages=messages,
-            ResponseMetadata=ResponseMetadata(
-                HTTPHeaders=response['ResponseMetadata']['HTTPHeaders'],
-                HTTPStatusCode=int(response['ResponseMetadata']['HTTPStatusCode']),
-                RequestId=response['ResponseMetadata']['RequestId'],
-            )
+            ResponseMetadata=response['ResponseMetadata'],
         ))
 
     @gen.coroutine
@@ -399,7 +426,6 @@ class AsyncSQSClient(object):
         """Asynchronously sends a message to the queue
         """
         req_kwargs.setdefault('retry', True)
-        req_kwargs.setdefault('attempt', 1)
         assert isinstance(req_entry, SendMessageRequestEntry)
         # botocore expects dictionaries
         api_params = dict(
@@ -420,7 +446,6 @@ class AsyncSQSClient(object):
         """Asynchronously sends messages to the queue
         """
         req_kwargs.setdefault('retry', True)
-        req_kwargs.setdefault('attempt', 1)
         batch_response = yield self._execute_batch('SendMessageBatch',
                                                    SendMessageRequestEntry,
                                                    self.send_message,
