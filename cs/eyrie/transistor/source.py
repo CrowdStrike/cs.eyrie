@@ -296,7 +296,7 @@ class SQSSource(object):
                     retry_timeout = INITIAL_TIMEOUT
                 else:
                     retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
-                    yield gen.sleep(retry_timeout)
+                    yield gen.sleep(retry_timeout.total_seconds())
 
                 sent_full_batch = True
                 for position, msg in enumerate(response.Messages):
