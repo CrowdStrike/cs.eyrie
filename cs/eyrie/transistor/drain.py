@@ -254,7 +254,11 @@ class SQSDrain(object):
             # This will keep flushing until clear,
             # including items that show up in between flushes
             while qsize > 0:
-                yield self._flush_send_batch(qsize)
+                try:
+                    yield self._flush_send_batch(qsize)
+                except Exception as err:
+                    self.logger.exception(err)
+                    self.output_error.set()
                 qsize = self._send_queue.qsize()
             # We've cleared the backlog, remove any possible future flush
             if self._flush_handle:
