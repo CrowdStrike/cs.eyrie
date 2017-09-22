@@ -225,23 +225,28 @@ class AsyncSQSClient(object):
         op_model = self._client.meta.service_model.operation_model(op_name)
         http_request = self._prepare_request(op_model, api_params,
                                              **req_kwargs)
-        http_response = yield self.http_client.fetch(http_request,
-                                                     raise_error=False)
-        parsed_response = self._parse_response(op_model, http_response)
-        if 'ResponseMetadata' in parsed_response:
-            metadata = parsed_response.pop('ResponseMetadata')
-            parsed_response['ResponseMetadata'] = ResponseMetadata(
-                HTTPHeaders=metadata.get('HTTPHeaders'),
-                HTTPStatusCode=int(metadata.get('HTTPStatusCode', 0)),
-                RequestId=metadata.get('RequestId'),
-            )
-        error = parsed_response.get('Error', {})
-        if http_response.code != 200 or error:
+        fetch_error = None
+        try:
+            http_response = yield self.http_client.fetch(http_request,
+                                                         raise_error=False)
+        except Exception as fetch_error:
+            self.logger.exception(fetch_error)
+        else:
+            parsed_response = self._parse_response(op_model, http_response)
+            if 'ResponseMetadata' in parsed_response:
+                metadata = parsed_response.pop('ResponseMetadata')
+                parsed_response['ResponseMetadata'] = ResponseMetadata(
+                    HTTPHeaders=metadata.get('HTTPHeaders'),
+                    HTTPStatusCode=int(metadata.get('HTTPStatusCode', 0)),
+                    RequestId=metadata.get('RequestId'),
+                )
+            error = parsed_response.get('Error', {})
+        if fetch_error or http_response.code != 200 or error:
             if retry and attempt <= self.retry_attempts and \
-               any([
+               (fetch_error or any([
                    ename in http_response.body
                    for ename in self.retry_exceptions
-               ]):
+               ])):
                 req_kwargs['retry'] = retry
                 req_kwargs['attempt'] = attempt
                 # https://www.awsarchitectureblog.com/2015/03/backoff.html
