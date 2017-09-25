@@ -28,7 +28,7 @@ ZMQ_TRANSPORTS = {
     'epgm',
     'inproc',
     'ipc',
-    'pgm,'
+    'pgm',
     'tcp',
     'vmci',
 }
