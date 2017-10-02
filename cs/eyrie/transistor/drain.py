@@ -6,6 +6,9 @@ from cs.eyrie.transistor import (
     CLOSED, CLOSING, RUNNING, TRANSIENT_ERRORS,
     SQSError,
 )
+from cs.eyrie.transistor.source import (
+    KafkaMessage,
+)
 from datetime import datetime
 from os import linesep
 from tornado import gen
@@ -99,12 +102,22 @@ class RDKafkaDrain(object):
     def emit_nowait(self, msg):
         self.logger.debug("Drain emitting")
         try:
-            self.emitter.produce(
-                self.topic, msg,
-                # This callback is executed in the librdkafka thread
-                callback=lambda err, kafka_msg: self._trampoline(err,
-                                                                 kafka_msg),
-            )
+            if self.topic == 'dynamic':
+                assert isinstance(msg, KafkaMessage)
+                self.emitter.produce(
+                    msg.topic,
+                    msg.value,
+                    msg.key,
+                    # This callback is executed in the librdkafka thread
+                    callback=self._trampoline,
+                )
+            else:
+                assert isinstance(msg, basestring)
+                self.emitter.produce(
+                    self.topic, msg,
+                    # This callback is executed in the librdkafka thread
+                    callback=self._trampoline,
+                )
         except BufferError:
             raise QueueFull()
 
