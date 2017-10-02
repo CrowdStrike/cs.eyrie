@@ -8,7 +8,7 @@ colorama==0.3.9
 cryptography==1.7.2
 cs.agentevents
 cs.platformevents
-csoc.utils==0.10.3
+csoc.utils==0.10.4
 datadog==0.15.0
 enum34==1.1.6
 hupper==0.4.2
