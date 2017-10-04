@@ -400,5 +400,15 @@ class ZMQDrain(object):
     def emit(self, msg, retry_timeout=INITIAL_TIMEOUT):
         if isinstance(msg, basestring):
             msg = [msg]
-        yield self._poll()
-        self.emitter.send_multipart(msg, zmq.NOBLOCK)
+        while True:
+            # This should ensure the ZMQ socket can accept more data
+            yield self._poll()
+            try:
+                self.emitter.send_multipart(msg, zmq.NOBLOCK)
+            except zmq.Again:
+                # But sometimes it's not enough
+                self.logger.debug('Error polling for socket writability')
+                retry_timeout = min(retry_timeout*2, MAX_TIMEOUT)
+                yield gen.sleep(retry_timeout.total_seconds())
+            else:
+                break
