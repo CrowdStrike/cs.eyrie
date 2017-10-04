@@ -352,9 +352,11 @@ class ExpiringCounter(MutableMapping):
         ])
 
     def __iter__(self):
+        # Preserve order of appearance in epochs
+        result = OrderedDict()
         for epoch in self._epochs:
-            for key in epoch:
-                yield key
+            result.update(epoch)
+        return iter(result)
 
     def __len__(self):
         return sum([

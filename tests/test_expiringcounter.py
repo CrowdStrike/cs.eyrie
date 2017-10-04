@@ -91,6 +91,13 @@ class TestExpiringCounter(unittest.TestCase):
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual([key for key in expiring_counter], ['bar'])
 
+    def test_iter_multi(self):
+        iterable = [Counter(bar=3), Counter(), Counter(bar=4)]
+        expiring_counter = ExpiringCounter(iterable, maxlen=3)
+        self.assertEqual([key for key in expiring_counter],
+                         ['bar'])
+
+    def test_iter_multi_distinct(self):
         iterable = [Counter(bar=3), Counter(baz=2), Counter(bing=4)]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual([key for key in expiring_counter],
