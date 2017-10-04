@@ -41,7 +41,10 @@ except ImportError:
 from pyramid.config import Configurator
 from pyramid.paster import get_appsettings
 
+from tornado import gen
 from tornado.concurrent import is_future
+from tornado.ioloop import IOLoop, PeriodicCallback
+
 
 try:
     import unicodecsv as csv
@@ -371,6 +374,47 @@ class ExpiringCounter(MutableMapping):
         expire keys; max key duration would be tick frequency * maxlen).
         """
         self._epochs.append(Counter())
+
+
+class TornadoExpiringCounter(ExpiringCounter):
+    """Implementation of ExpiringCounter that uses the Tornado IOLoop
+    to drive the deque rotation.
+    """
+
+    def __init__(self,
+                 loop=None,
+                 max_duration=timedelta(minutes=5).total_seconds(),
+                 granularity=timedelta(seconds=10).total_seconds(),
+                 # Escape hatch for tests
+                 maxlen=None):
+        if loop is None:
+            self._loop = IOLoop.current()
+        else:
+            self._loop = loop
+        self._max_duration = max_duration
+        self._granularity = granularity
+        if not self._granularity or self._granularity is gen.moment:
+            self._tick_pc = None
+            self._loop.add_callback(self.tick)
+            maxlen = maxlen
+        else:
+            self._tick_pc = PeriodicCallback(self.tick,
+                                             granularity * 1000,
+                                             self._loop)
+            self._tick_pc.start()
+            # Convert max_duration to maxlen
+            maxlen = int(max_duration / granularity)
+        super(TornadoExpiringCounter, self).__init__(iterable=None,
+                                                     maxlen=maxlen)
+
+    def tick(self):
+        try:
+            super(TornadoExpiringCounter, self).tick()
+        finally:
+            # If no periodic callback is registered,
+            # schedule next tick immediately
+            if self._tick_pc is None:
+                self._loop.add_callback(self.tick)
 
 
 class BatchVassal(Vassal):

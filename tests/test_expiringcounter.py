@@ -1,7 +1,8 @@
 import unittest
 from collections import Counter
-from cs.eyrie.vassal import ExpiringCounter
-from tornado.testing import main
+from cs.eyrie.vassal import ExpiringCounter, TornadoExpiringCounter
+from tornado import gen
+from tornado.testing import AsyncTestCase, gen_test, main
 
 
 class TestExpiringCounter(unittest.TestCase):
@@ -138,6 +139,51 @@ class TestExpiringCounter(unittest.TestCase):
         expiring_counter.tick()
         self.assertEqual(expiring_counter['bar'], 0)
         self.assertEqual(len(expiring_counter), 0)
+
+
+class TestTornadoExpiringCounter(AsyncTestCase):
+
+    @gen_test
+    def test_init(self):
+        expiring_counter = TornadoExpiringCounter(self.io_loop,
+                                                  granularity=None,
+                                                  maxlen=3)
+        self.assertEqual(expiring_counter._epochs.maxlen, 3)
+        self.assertIs(expiring_counter._tick_pc, None)
+        expiring_counter = TornadoExpiringCounter(self.io_loop,
+                                                  granularity=gen.moment,
+                                                  maxlen=3)
+        self.assertIs(expiring_counter._tick_pc, None)
+        expiring_counter = TornadoExpiringCounter(self.io_loop,
+                                                  granularity=0.0,
+                                                  maxlen=3)
+        self.assertIs(expiring_counter._tick_pc, None)
+
+    @gen_test
+    def test_tick(self):
+        expiring_counter = TornadoExpiringCounter(self.io_loop,
+                                                  granularity=None,
+                                                  maxlen=1)
+        expiring_counter['foo'] += 1
+        self.assertEqual(expiring_counter['foo'], 1)
+        self.assertEqual(len(expiring_counter), 1)
+        # Let IOLoop advance one iteration
+        yield None
+        self.assertEqual(expiring_counter['foo'], 0)
+        self.assertEqual(len(expiring_counter), 0)
+        expiring_counter = TornadoExpiringCounter(self.io_loop,
+                                                  granularity=None,
+                                                  maxlen=2)
+        expiring_counter['foo'] += 1
+        self.assertEqual(expiring_counter['foo'], 1)
+        self.assertEqual(len(expiring_counter), 1)
+        # Let IOLoop advance one iteration
+        yield None
+        self.assertEqual(expiring_counter['foo'], 1)
+        self.assertEqual(len(expiring_counter), 1)
+        yield None
+        self.assertEqual(expiring_counter['foo'], 0)
+        self.assertEqual(expiring_counter['foo'], 0)
 
 
 def all():
