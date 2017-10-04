@@ -359,10 +359,10 @@ class ExpiringCounter(MutableMapping):
         return iter(result)
 
     def __len__(self):
-        return sum([
-            len(epoch)
+        return len(set.union(*[
+            set(epoch)
             for epoch in self._epochs
-        ])
+        ]))
 
     def __setitem__(self, key, value):
         self._epochs[-1][key] = value

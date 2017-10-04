@@ -116,6 +116,12 @@ class TestExpiringCounter(unittest.TestCase):
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual(len(expiring_counter), 1)
 
+    def test_len_multi(self):
+        iterable = [Counter(bar=3), Counter(), Counter(bar=2)]
+        expiring_counter = ExpiringCounter(iterable, maxlen=3)
+        self.assertEqual(len(expiring_counter), 2)
+
+    def test_len_multi_distinct(self):
         iterable = [Counter(bar=3), Counter(), Counter(baz=2)]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual(len(expiring_counter), 2)
