@@ -7,7 +7,9 @@ try:
     from cStringIO import StringIO
 except ImportError:
     from io import StringIO
-from collections import Counter, OrderedDict, defaultdict, deque, namedtuple
+from collections import (
+    Counter, MutableMapping, OrderedDict, defaultdict, deque, namedtuple
+)
 from datetime import timedelta
 from functools import partial
 import logging
@@ -316,6 +318,59 @@ class _TableRowValidator(object):
                 msg = 'Invalid data for type {} column "{}": "{}"'
                 errors.append(msg.format(v.col_type, v.column_name, data))
         return errors
+
+
+class ExpiringCounter(MutableMapping):
+    """The general idea for this class is that it is a limited-size
+    deque of Counter instances. It must be driven externally by calling
+    `tick()` periodically, so that elements are rotated through the deque.
+    We delegate the required abstract methods to our list of Counter instances.
+    """
+
+    def __init__(self, iterable=None, maxlen=None):
+        if iterable is None:
+            self._epochs = deque([Counter()], maxlen)
+        else:
+            self._epochs = deque(iterable, maxlen)
+
+    def __contains__(self, key):
+        return any([
+            key in epoch
+            for epoch in self._epochs
+        ])
+
+    def __delitem__(self, key):
+        for epoch in self._epochs:
+            del epoch[key]
+
+    def __getitem__(self, key):
+        return sum([
+            epoch[key]
+            for epoch in self._epochs
+        ])
+
+    def __iter__(self):
+        for epoch in self._epochs:
+            for key in epoch:
+                yield key
+
+    def __len__(self):
+        return sum([
+            len(epoch)
+            for epoch in self._epochs
+        ])
+
+    def __setitem__(self, key, value):
+        self._epochs[-1][key] = value
+
+    def clear(self):
+        self._epochs.clear()
+
+    def tick(self):
+        """This should be called periodically (how frequently you want to
+        expire keys; max key duration would be tick frequency * maxlen).
+        """
+        self._epochs.append(Counter())
 
 
 class BatchVassal(Vassal):
