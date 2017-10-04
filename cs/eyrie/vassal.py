@@ -573,6 +573,12 @@ class BatchVassal(Vassal):
 
         self.cursor.execute('\n'.join(sql), params)
 
+    def reset_batch(self):
+        self.row_counts.clear()
+        for buf in self.bufs.values():
+            buf.seek(0)
+            buf.truncate()
+
     def send_batch(self, add_timeout=True):
         try:
             all_rows = sum(self.row_counts.values())
@@ -593,12 +599,8 @@ class BatchVassal(Vassal):
                 self.logger.debug("COPY Finished: %s", name)
             self.cursor.execute('COMMIT;')
             all_rows = sum(self.row_counts.values())
-            self.row_counts.clear()
             # All buffers were copied; it's safe now to truncate
-            for buf in self.bufs.values():
-                buf.seek(0)
-                buf.truncate()
-            self.pks_seen.clear()
+            self.reset_batch()
             self.logger.info("Batch send complete: %d", all_rows)
         except DataError as err:
             self.logger.exception(err)
