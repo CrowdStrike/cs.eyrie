@@ -75,7 +75,6 @@ class Vassal(object):
     cursor_factory = DictCursor
 
     def __init__(self, **kwargs):
-        self.pks_seen = defaultdict(set)
         self.curr_proc = multiprocessing.current_process()
 
         # Set up logging. By default, instances of this class will use a
@@ -421,9 +420,16 @@ class BatchVassal(Vassal):
     exclude_cols = []
     delay = 15
     models = []
+    max_pks_seen_duration = timedelta(minutes=5).total_seconds()
+    pks_seen_granularity = timedelta(minutes=1).total_seconds()
 
     def __init__(self, **kwargs):
         super(BatchVassal, self).__init__(**kwargs)
+        self.pks_seen = defaultdict(lambda: TornadoExpiringCounter(
+            self.loop,
+            self.max_pks_seen_duration,
+            self.pks_seen_granularity,
+        ))
         self.tables = []
         for m in self.models:
             id_table = m.__table__.info.get('id_table', None)
@@ -655,7 +661,7 @@ class BatchVassal(Vassal):
                               name, pk_vals)
             return
         else:
-            self.pks_seen[name].add(pk_vals)
+            self.pks_seen[name][pk_vals] += 1
         self.writers[name].writerow(row)
         self.row_counts[name] += 1
 
