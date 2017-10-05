@@ -7,13 +7,16 @@ try:
     from cStringIO import StringIO
 except ImportError:
     from io import StringIO
-from collections import Counter, OrderedDict, defaultdict, deque, namedtuple
+from collections import (
+    Counter, MutableMapping, OrderedDict, defaultdict, deque, namedtuple
+)
 from datetime import timedelta
 from functools import partial
 import logging
 import multiprocessing
 import os
 import sys
+import warnings
 from uuid import UUID
 
 try:
@@ -39,7 +42,10 @@ except ImportError:
 from pyramid.config import Configurator
 from pyramid.paster import get_appsettings
 
+from tornado import gen
 from tornado.concurrent import is_future
+from tornado.ioloop import IOLoop, PeriodicCallback
+
 
 try:
     import unicodecsv as csv
@@ -70,7 +76,6 @@ class Vassal(object):
     cursor_factory = DictCursor
 
     def __init__(self, **kwargs):
-        self.pks_seen = defaultdict(set)
         self.curr_proc = multiprocessing.current_process()
 
         # Set up logging. By default, instances of this class will use a
@@ -318,13 +323,128 @@ class _TableRowValidator(object):
         return errors
 
 
+class ExpiringCounter(MutableMapping):
+    """The general idea for this class is that it is a limited-size
+    deque of Counter instances. It must be driven externally by calling
+    `tick()` periodically, so that elements are rotated through the deque.
+    We delegate the required abstract methods to our list of Counter instances.
+    """
+
+    def __init__(self, iterable=None, maxlen=None):
+        if iterable is None:
+            self._epochs = deque([Counter()], maxlen)
+        else:
+            self._epochs = deque(iterable, maxlen)
+
+    def __contains__(self, key):
+        return any([
+            key in epoch
+            for epoch in self._epochs
+        ])
+
+    def __delitem__(self, key):
+        for epoch in self._epochs:
+            del epoch[key]
+
+    def __getitem__(self, key):
+        return sum([
+            epoch[key]
+            for epoch in self._epochs
+        ])
+
+    def __iter__(self):
+        # Preserve order of appearance in epochs
+        result = OrderedDict()
+        for epoch in self._epochs:
+            result.update(epoch)
+        return iter(result)
+
+    def __len__(self):
+        return len(set.union(*[
+            set(epoch)
+            for epoch in self._epochs
+        ]))
+
+    def __setitem__(self, key, value):
+        msg = u"Using += on the base class is not supported; use `increment`"
+        if value > 1:
+            warnings.warn(msg, SyntaxWarning)
+        self._epochs[-1][key] = value
+
+    def clear(self):
+        # This is a shortcut, instead of having to iterate over all keys
+        self._epochs.clear()
+
+    # You would be tempted to write this,
+    # and you would be wrong...
+    #def decrement(self, key, value=1):
+    #    self._epochs[-1][key] -= value
+
+    def increment(self, key, value=1):
+        self._epochs[-1][key] += value
+
+    def tick(self):
+        """This should be called periodically (how frequently you want to
+        expire keys; max key duration would be tick frequency * maxlen).
+        """
+        self._epochs.append(Counter())
+
+
+class TornadoExpiringCounter(ExpiringCounter):
+    """Implementation of ExpiringCounter that uses the Tornado IOLoop
+    to drive the deque rotation.
+    """
+
+    def __init__(self,
+                 loop=None,
+                 max_duration=timedelta(minutes=5).total_seconds(),
+                 granularity=timedelta(seconds=10).total_seconds(),
+                 # Escape hatch for tests
+                 maxlen=None):
+        if loop is None:
+            self._loop = IOLoop.current()
+        else:
+            self._loop = loop
+        self._max_duration = max_duration
+        self._granularity = granularity
+        if not self._granularity or self._granularity is gen.moment:
+            self._tick_pc = None
+            self._loop.add_callback(self.tick)
+            maxlen = maxlen
+        else:
+            self._tick_pc = PeriodicCallback(self.tick,
+                                             granularity * 1000,
+                                             self._loop)
+            self._tick_pc.start()
+            # Convert max_duration to maxlen
+            maxlen = int(max_duration / granularity)
+        super(TornadoExpiringCounter, self).__init__(iterable=None,
+                                                     maxlen=maxlen)
+
+    def tick(self):
+        try:
+            super(TornadoExpiringCounter, self).tick()
+        finally:
+            # If no periodic callback is registered,
+            # schedule next tick immediately
+            if self._tick_pc is None:
+                self._loop.add_callback(self.tick)
+
+
 class BatchVassal(Vassal):
     exclude_cols = []
     delay = 15
     models = []
+    max_pks_seen_duration = timedelta(minutes=5).total_seconds()
+    pks_seen_granularity = timedelta(minutes=1).total_seconds()
 
     def __init__(self, **kwargs):
         super(BatchVassal, self).__init__(**kwargs)
+        self.pks_seen = defaultdict(lambda: TornadoExpiringCounter(
+            self.loop,
+            self.max_pks_seen_duration,
+            self.pks_seen_granularity,
+        ))
         self.tables = []
         for m in self.models:
             id_table = m.__table__.info.get('id_table', None)
@@ -474,6 +594,12 @@ class BatchVassal(Vassal):
 
         self.cursor.execute('\n'.join(sql), params)
 
+    def reset_batch(self):
+        self.row_counts.clear()
+        for buf in self.bufs.values():
+            buf.seek(0)
+            buf.truncate()
+
     def send_batch(self, add_timeout=True):
         try:
             all_rows = sum(self.row_counts.values())
@@ -494,12 +620,8 @@ class BatchVassal(Vassal):
                 self.logger.debug("COPY Finished: %s", name)
             self.cursor.execute('COMMIT;')
             all_rows = sum(self.row_counts.values())
-            self.row_counts.clear()
             # All buffers were copied; it's safe now to truncate
-            for buf in self.bufs.values():
-                buf.seek(0)
-                buf.truncate()
-            self.pks_seen.clear()
+            self.reset_batch()
             self.logger.info("Batch send complete: %d", all_rows)
         except DataError as err:
             self.logger.exception(err)
@@ -554,7 +676,7 @@ class BatchVassal(Vassal):
                               name, pk_vals)
             return
         else:
-            self.pks_seen[name].add(pk_vals)
+            self.pks_seen[name][pk_vals] += 1
         self.writers[name].writerow(row)
         self.row_counts[name] += 1
 
