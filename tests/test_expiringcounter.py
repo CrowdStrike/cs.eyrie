@@ -19,74 +19,83 @@ class TestExpiringCounter(unittest.TestCase):
         self.assertEqual(expiring_counter._epochs.maxlen, 2)
         self.assertEqual(len(expiring_counter._epochs), 2)
 
-    def test_contains(self):
-        foo = Counter(bar=3)
-        expiring_counter = ExpiringCounter([Counter(), Counter(), foo],
-                                           maxlen=3)
+    def test_contains_last(self):
+        iterable = [Counter(), Counter(), Counter(bar=3)]
+        expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertIn('bar', expiring_counter)
         self.assertNotIn('baz', expiring_counter)
 
-        expiring_counter = ExpiringCounter([Counter(), foo, Counter()],
-                                           maxlen=3)
+    def test_contains_middle(self):
+        iterable = [Counter(), Counter(bar=3), Counter()]
+        expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertIn('bar', expiring_counter)
         self.assertNotIn('baz', expiring_counter)
 
-        expiring_counter = ExpiringCounter([foo, Counter(), Counter()],
-                                           maxlen=3)
+    def test_contains_first(self):
+        iterable = [Counter(bar=3), Counter(), Counter()]
+        expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertIn('bar', expiring_counter)
         self.assertNotIn('baz', expiring_counter)
 
-    def test_delitem(self):
+    def test_delitem_last(self):
         iterable = [Counter(), Counter(), Counter(bar=3)]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertIn('bar', expiring_counter)
         del expiring_counter['bar']
         self.assertNotIn('bar', expiring_counter)
 
+    def test_delitem_middle(self):
         iterable = [Counter(), Counter(bar=3), Counter()]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertIn('bar', expiring_counter)
         del expiring_counter['bar']
         self.assertNotIn('bar', expiring_counter)
 
+    def test_delitem_first(self):
         iterable = [Counter(bar=3), Counter(), Counter()]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertIn('bar', expiring_counter)
         del expiring_counter['bar']
         self.assertNotIn('bar', expiring_counter)
 
+    def test_delitem_multi(self):
         iterable = [Counter(bar=3), Counter(), Counter(bar=2)]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertIn('bar', expiring_counter)
         del expiring_counter['bar']
         self.assertNotIn('bar', expiring_counter)
 
-    def test_getitem(self):
+    def test_getitem_last(self):
         iterable = [Counter(), Counter(), Counter(bar=3)]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual(expiring_counter['bar'], 3)
 
+    def test_getitem_middle(self):
         iterable = [Counter(), Counter(bar=3), Counter()]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual(expiring_counter['bar'], 3)
 
+    def test_getitem_first(self):
         iterable = [Counter(bar=3), Counter(), Counter()]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual(expiring_counter['bar'], 3)
 
+    def test_getitem_multi(self):
         iterable = [Counter(bar=3), Counter(), Counter(bar=2)]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual(expiring_counter['bar'], 5)
 
-    def test_iter(self):
+    def test_iter_last(self):
         iterable = [Counter(), Counter(), Counter(bar=3)]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual([key for key in expiring_counter], ['bar'])
 
+    def test_iter_middle(self):
         iterable = [Counter(), Counter(bar=3), Counter()]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual([key for key in expiring_counter], ['bar'])
 
+    def test_iter_first(self):
         iterable = [Counter(bar=3), Counter(), Counter()]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual([key for key in expiring_counter], ['bar'])
@@ -103,15 +112,17 @@ class TestExpiringCounter(unittest.TestCase):
         self.assertEqual([key for key in expiring_counter],
                          ['bar', 'baz', 'bing'])
 
-    def test_len(self):
+    def test_len_last(self):
         iterable = [Counter(), Counter(), Counter(bar=3)]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual(len(expiring_counter), 1)
 
+    def test_len_middle(self):
         iterable = [Counter(), Counter(bar=3), Counter()]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual(len(expiring_counter), 1)
 
+    def test_len_first(self):
         iterable = [Counter(bar=3), Counter(), Counter()]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual(len(expiring_counter), 1)
