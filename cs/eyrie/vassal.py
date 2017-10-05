@@ -372,6 +372,7 @@ class ExpiringCounter(MutableMapping):
         self._epochs[-1][key] = value
 
     def clear(self):
+        # This is a shortcut, instead of having to iterate over all keys
         self._epochs.clear()
 
     # You would be tempted to write this,
