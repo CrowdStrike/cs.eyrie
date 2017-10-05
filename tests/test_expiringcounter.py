@@ -1,4 +1,5 @@
 import unittest
+import warnings
 from collections import Counter
 from cs.eyrie.vassal import ExpiringCounter, TornadoExpiringCounter
 from tornado import gen
@@ -85,6 +86,22 @@ class TestExpiringCounter(unittest.TestCase):
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
         self.assertEqual(expiring_counter['bar'], 5)
 
+    def test_increment(self):
+        iterable = [Counter(), Counter(), Counter()]
+        expiring_counter = ExpiringCounter(iterable, maxlen=3)
+        expiring_counter['foo'] = 1
+        self.assertEqual(expiring_counter['foo'], 1)
+        expiring_counter.tick()
+
+        expiring_counter.increment('foo', 1)
+        self.assertEqual(expiring_counter['foo'], 2)
+        expiring_counter.tick()
+
+        expiring_counter.increment('foo', 1)
+        self.assertEqual(expiring_counter['foo'], 3)
+        expiring_counter.tick()
+        self.assertEqual(expiring_counter['foo'], 2)
+
     def test_iter_last(self):
         iterable = [Counter(), Counter(), Counter(bar=3)]
         expiring_counter = ExpiringCounter(iterable, maxlen=3)
@@ -141,6 +158,25 @@ class TestExpiringCounter(unittest.TestCase):
         expiring_counter = ExpiringCounter(maxlen=3)
         expiring_counter['foo'] += 1
         self.assertEqual(expiring_counter['foo'], 1)
+
+    def test_setitem_warning(self):
+        expiring_counter = ExpiringCounter(maxlen=3)
+        expiring_counter['bar'] = 1
+        try:
+            # Cause all warnings to always be triggered.
+            warnings.simplefilter("always")
+            with warnings.catch_warnings(record=True) as result:
+                # This should trigger a warning because Python
+                # does a __getitem__ call, increment, then __setitem__
+                # This sequence breaks if one of the elements is in an
+                # earlier epoch
+                expiring_counter['bar'] += 1
+                # Verify some things
+                self.assertEqual(len(result), 1)
+                self.assertIs(result[-1].category, SyntaxWarning)
+                self.assertIn("increment", str(result[-1].message))
+        finally:
+            warnings.resetwarnings()
 
     def test_clear(self):
         expiring_counter = ExpiringCounter(maxlen=3)

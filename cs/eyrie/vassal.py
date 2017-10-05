@@ -16,6 +16,7 @@ import logging
 import multiprocessing
 import os
 import sys
+import warnings
 from uuid import UUID
 
 try:
@@ -365,10 +366,21 @@ class ExpiringCounter(MutableMapping):
         ]))
 
     def __setitem__(self, key, value):
+        msg = u"Using += on the base class is not supported; use `increment`"
+        if value > 1:
+            warnings.warn(msg, SyntaxWarning)
         self._epochs[-1][key] = value
 
     def clear(self):
         self._epochs.clear()
+
+    # You would be tempted to write this,
+    # and you would be wrong...
+    #def decrement(self, key, value=1):
+    #    self._epochs[-1][key] -= value
+
+    def increment(self, key, value=1):
+        self._epochs[-1][key] += value
 
     def tick(self):
         """This should be called periodically (how frequently you want to
