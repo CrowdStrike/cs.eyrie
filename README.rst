@@ -1,6 +1,8 @@
 ===============================
-Eyrie
+Eyrie - Retired
 ===============================
+
+Retired, no longer actively used or maintained
 
 .. image:: https://badge.fury.io/py/cs.eyrie.png
     :target: http://badge.fury.io/py/cs.eyrie
